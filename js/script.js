@@ -64,7 +64,7 @@ const EFFECT_MODES = [
   { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.7, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // VHS slice jitter
   { wave: 0.3, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.3, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.8, blockCorrupt: 0.0, posterize: 0.0 }, // analog RGB drift
   { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0 }, // MPEG block corrupt
-  { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.5 }, // bit-crush + hue
+  { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.1 }, // bit-crush + hue
 ];
 
 
@@ -307,8 +307,8 @@ function createScanlineFilter() {
 
       vec4 color = texture2D(uSampler, uv);
 
-      float line = sin(uv.y * 180.0) * 0.5 + 0.5;
-      float darkBand = mix(1.0, 0.72, (1.0 - line) * uIntensity * 0.8);
+      float line = sin(uv.y * 80.0) * 0.5 + 0.5;
+      float darkBand = mix(1.0, 0.87, (1.0 - line) * uIntensity * 0.8);
       color.rgb *= darkBand;
 
       gl_FragColor = color;
@@ -460,10 +460,12 @@ function createPosterizeFilter() {
     uniform float uIntensity;
 
     void main(void) {
-      vec4 color = texture2D(uSampler, vTextureCoord);
-      float levels = mix(20.0, 2.0, clamp(uIntensity, 0.0, 1.0));
-      color.rgb = floor(color.rgb * levels + 0.5) / levels;
-      gl_FragColor = color;
+      vec4 original = texture2D(uSampler, vTextureCoord);
+      float t = clamp(uIntensity, 0.0, 1.0);
+      float levels = mix(32.0, 2.0, t);
+      vec3 quantized = floor(original.rgb * levels + 0.5) / levels;
+      // blend so t=0 is a pure pass-through — no effect unless the mode enables it
+      gl_FragColor = vec4(mix(original.rgb, quantized, t), original.a);
     }
   `;
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
@@ -663,11 +665,18 @@ function mainTick() {
     // effects gently ramp up during the intro so it's not completely static,
     // but stays subtle, vortex stays off until the drop
     const introRamp = Math.min(1, elapsed / INTRO_DURATION) * 0.3;
-    wave.uniforms.uIntensity     = introRamp * 0.6;
-    chroma.uniforms.uIntensity   = introRamp * 0.3;
-    vortex.uniforms.uIntensity   = 0.0;
-    barrel.uniforms.uIntensity   = introRamp * 0.15;
-    scanline.uniforms.uIntensity = introRamp * 0.4;
+    wave.uniforms.uIntensity         = introRamp * 0.6;
+    chroma.uniforms.uIntensity       = introRamp * 0.3;
+    vortex.uniforms.uIntensity       = 0.0;
+    barrel.uniforms.uIntensity       = introRamp * 0.15;
+    scanline.uniforms.uIntensity     = introRamp * 0.4;
+    // keep all post-drop effects silent during the intro
+    horizChroma.uniforms.uIntensity  = 0.0;
+    swirl.uniforms.uIntensity        = 0.0;
+    sliceJitter.uniforms.uIntensity  = 0.0;
+    rgbDrift.uniforms.uIntensity     = 0.0;
+    blockCorrupt.uniforms.uIntensity = 0.0;
+    posterize.uniforms.uIntensity    = 0.0;
 
     updateLyrics(elapsed);
 
@@ -710,7 +719,7 @@ function mainTick() {
     sliceJitter.uniforms.uIntensity      = mode.sliceJitter  > 0 ? mode.sliceJitter  + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
     rgbDrift.uniforms.uIntensity         = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
     blockCorrupt.uniforms.uIntensity     = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
-    posterize.uniforms.uIntensity        = mode.posterize    > 0 ? mode.posterize    + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
+    posterize.uniforms.uIntensity        = mode.posterize    > 0 ? mode.posterize    + pulseValue * PULSE_STRENGTH * 0.25 : 0.0;
   }
 
   updateParticles();
