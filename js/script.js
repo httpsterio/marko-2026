@@ -50,10 +50,16 @@ let dropHandled        = false;
 // base intensities per effect mode, beat pulse adds on top of these.
 // modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
 const EFFECT_MODES = [
-  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6 },  // wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1 },  // hue shift
-  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0 },  // glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2 },  // barrel + hue
+  // --- existing 4 ---
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0 },  // wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0 },  // hue shift
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0 },  // glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0 },  // barrel + hue
+  // --- new 4 ---
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0  }, // horizontal chroma dominant
+  { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35 }, // swirl + horiz chroma
+  { wave: 0.1, chroma: 0.0,  vortex: 0.6, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.45 }, // swirl + hue rotation
+  { wave: 0.6, chroma: 0.2,  vortex: 0.0, barrel: 0.5, scanline: 0.8, horizChroma: 0.7, swirl: 0.0  }, // glitch + horiz chroma
 ];
 
 
@@ -109,16 +115,18 @@ function setupPixi() {
   particleContainer = new PIXI.Container();
   pixiApp.stage.addChild(particleContainer);
 
-  const wave     = createWaveFilter();
-  const chroma   = createChromaFilter();
-  const vortex   = createVortexFilter();
-  const barrel   = createBarrelFilter();
-  const scanline = createScanlineFilter();
+  const wave       = createWaveFilter();
+  const chroma     = createChromaFilter();
+  const vortex     = createVortexFilter();
+  const barrel     = createBarrelFilter();
+  const scanline   = createScanlineFilter();
+  const horizChroma = createHorizChromaFilter();
+  const swirl      = createSwirlFilter();
 
-  markoSprite.filters = [wave, chroma, vortex, barrel, scanline];
+  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl];
 
   // stash on window so mainTick can grab without a closure
-  window._filters = { wave, chroma, vortex, barrel, scanline };
+  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl };
 
   pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
   pixiApp.ticker.add(mainTick);
@@ -300,6 +308,53 @@ function createScanlineFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
+// pure horizontal RGB split — R shifts left, B shifts right, G stays.
+// uTime drives a sine oscillation so the split actively sweeps rather than
+// sitting at a fixed offset. uIntensity (beat-driven) scales the amplitude,
+// making the sweep largest on each beat and fading between them.
+function createHorizChromaFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    void main(void) {
+      vec2 uv = vTextureCoord;
+      float osc = 0.5 + 0.5 * sin(uTime * 5.5);
+      float amt = uIntensity * 0.028 * osc;
+      float r = texture2D(uSampler, vec2(uv.x - amt, uv.y)).r;
+      float g = texture2D(uSampler, uv).g;
+      float b = texture2D(uSampler, vec2(uv.x + amt, uv.y)).b;
+      float a = texture2D(uSampler, uv).a;
+      gl_FragColor = vec4(r, g, b, a);
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// mild swirl/twist — rotates UV around center, strongest at center and
+// fading to zero at edges. kept low intensity to avoid disorientation.
+function createSwirlFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+
+    void main(void) {
+      vec2 uv = vTextureCoord - vec2(0.5);
+      float dist = length(uv);
+      float angle = uIntensity * 1.8 * (1.0 - smoothstep(0.0, 0.7, dist));
+      float sinA = sin(angle), cosA = cos(angle);
+      vec2 rotated = vec2(uv.x * cosA - uv.y * sinA, uv.x * sinA + uv.y * cosA) + vec2(0.5);
+      gl_FragColor = texture2D(uSampler, clamp(rotated, 0.0, 1.0));
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
+}
+
 
 // ── audio playback ───────────────────────────
 
@@ -469,16 +524,17 @@ function mainTick() {
   const elapsed = now - introStartTime;
   lastTimeSec   = now;
 
-  const { wave, chroma, vortex, barrel, scanline } = window._filters;
+  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl } = window._filters;
 
   // uTime is absolute audioCtx time, it never resets, so the shader
   // internal state (wave phase, swirl rotation, glitch positions) is
   // always different even when the song loops
-  wave.uniforms.uTime     = now;
-  chroma.uniforms.uTime   = now;
-  vortex.uniforms.uTime   = now;
-  barrel.uniforms.uTime   = now;
-  scanline.uniforms.uTime = now;
+  wave.uniforms.uTime        = now;
+  chroma.uniforms.uTime      = now;
+  vortex.uniforms.uTime      = now;
+  barrel.uniforms.uTime      = now;
+  scanline.uniforms.uTime    = now;
+  horizChroma.uniforms.uTime = now;
 
   if (now >= loopStartAudioTime && !dropHandled) handleDrop();
 
@@ -527,11 +583,13 @@ function mainTick() {
     const mode          = EFFECT_MODES[currentMode];
     const PULSE_STRENGTH = 0.8;
 
-    wave.uniforms.uIntensity     = mode.wave     + pulseValue * PULSE_STRENGTH;
-    chroma.uniforms.uIntensity   = mode.chroma   + pulseValue * PULSE_STRENGTH * 0.6;
-    vortex.uniforms.uIntensity   = mode.vortex   + pulseValue * PULSE_STRENGTH * 0.4;
-    barrel.uniforms.uIntensity   = mode.barrel   + pulseValue * PULSE_STRENGTH * 0.5;
-    scanline.uniforms.uIntensity = mode.scanline + pulseValue * PULSE_STRENGTH * 0.7;
+    wave.uniforms.uIntensity            = mode.wave        + pulseValue * PULSE_STRENGTH;
+    chroma.uniforms.uIntensity          = mode.chroma      + pulseValue * PULSE_STRENGTH * 0.6;
+    vortex.uniforms.uIntensity          = mode.vortex      + pulseValue * PULSE_STRENGTH * 0.4;
+    barrel.uniforms.uIntensity          = mode.barrel      + pulseValue * PULSE_STRENGTH * 0.5;
+    scanline.uniforms.uIntensity        = mode.scanline    + pulseValue * PULSE_STRENGTH * 0.7;
+    horizChroma.uniforms.uIntensity     = mode.horizChroma + pulseValue * PULSE_STRENGTH * 0.7;
+    swirl.uniforms.uIntensity           = mode.swirl > 0 ? mode.swirl + pulseValue * PULSE_STRENGTH * 0.3 : 0.0;
   }
 
   updateParticles();
