@@ -51,12 +51,12 @@ let lastBeat         = -1;
 let dropHandled      = false;
 
 // ── Effect modes config ──
-// Each mode: [wave, chroma, kaleido, barrel, scanline] base intensities
+// Each mode: [wave, chroma, vortex, barrel, scanline] base intensities
 const EFFECT_MODES = [
-  { wave: 0.9, chroma: 0.15, kaleido: 0.0, barrel: 0.2, scanline: 0.6 },  // Mode 0: Wave + scanlines
-  { wave: 0.3, chroma: 0.5,  kaleido: 0.9, barrel: 0.5, scanline: 0.1 },  // Mode 1: Kaleidoscope
-  { wave: 0.3, chroma: 0.9,  kaleido: 0.0, barrel: 0.1, scanline: 1.0 },  // Mode 2: Glitch/chroma
-  { wave: 0.5, chroma: 0.3,  kaleido: 0.4, barrel: 1.0, scanline: 0.2 },  // Mode 3: Barrel warp
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6 },  // Mode 0: Wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.9, barrel: 0.4, scanline: 0.1 },  // Mode 1: Vortex swirl
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0 },  // Mode 2: Glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.7, barrel: 1.0, scanline: 0.2 },  // Mode 3: Barrel + vortex
 ];
 
 // ─────────────────────────────────────────────
@@ -116,13 +116,13 @@ function setupPixi() {
   // Attach filters
   const wave     = createWaveFilter();
   const chroma   = createChromaFilter();
-  const kaleido  = createKaleidoFilter();
+  const vortex   = createVortexFilter();
   const barrel   = createBarrelFilter();
   const scanline = createScanlineFilter();
 
-  markoSprite.filters = [wave, chroma, kaleido, barrel, scanline];
+  markoSprite.filters = [wave, chroma, vortex, barrel, scanline];
 
-  window._filters = { wave, chroma, kaleido, barrel, scanline };
+  window._filters = { wave, chroma, vortex, barrel, scanline };
 
   // Handle resize
   pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
@@ -150,13 +150,29 @@ function coverSprite(sprite) {
 // STEP 3 — GLSL FILTERS
 // ─────────────────────────────────────────────
 
+// Custom vertex shader with explicit mediump precision so the vTextureCoord
+// varying precision matches the fragment shaders. PIXI's built-in vertex
+// shader leaves it implicitly highp, which Firefox's strict GLSL linker
+// can reject when the fragment declares mediump.
+const VERT_SRC = `
+  precision mediump float;
+  attribute vec2 aVertexPosition;
+  uniform mat3 projectionMatrix;
+  uniform vec4 inputSize;
+  uniform vec4 outputFrame;
+  varying vec2 vTextureCoord;
+  void main(void) {
+    vec2 pos = aVertexPosition * max(outputFrame.zw, vec2(0.0)) + outputFrame.xy;
+    gl_Position = vec4((projectionMatrix * vec3(pos, 1.0)).xy, 0.0, 1.0);
+    vTextureCoord = aVertexPosition * (outputFrame.zw * inputSize.zw);
+  }
+`;
+
 function createWaveFilter() {
   const frag = `
     precision mediump float;
     uniform sampler2D uSampler;
     varying vec2 vTextureCoord;
-    uniform vec4 inputSize;
-    uniform vec4 outputFrame;
     uniform float uTime;
     uniform float uIntensity;
 
@@ -169,8 +185,7 @@ function createWaveFilter() {
       gl_FragColor = texture2D(uSampler, uv);
     }
   `;
-  const f = new PIXI.Filter(undefined, frag, { uTime: 0.0, uIntensity: 0.0 });
-  return f;
+  return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
 function createChromaFilter() {
@@ -184,7 +199,7 @@ function createChromaFilter() {
     void main(void) {
       vec2 uv = vTextureCoord;
       float amt = uIntensity * 0.018;
-      vec2 dir = uv - 0.5;
+      vec2 dir = uv - vec2(0.5, 0.5);
       float r = texture2D(uSampler, uv + dir * amt * 1.5).r;
       float g = texture2D(uSampler, uv).g;
       float b = texture2D(uSampler, uv - dir * amt * 1.5).b;
@@ -192,37 +207,33 @@ function createChromaFilter() {
       gl_FragColor = vec4(r, g, b, a);
     }
   `;
-  return new PIXI.Filter(undefined, frag, { uTime: 0.0, uIntensity: 0.0 });
+  return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-function createKaleidoFilter() {
+// Vortex swirl — replaces kaleidoscope.
+// Rotates UV coordinates around the centre; strongest at centre, fading to edge.
+// Also slowly spins over time when intensity > 0 for an organic feel.
+function createVortexFilter() {
   const frag = `
     precision mediump float;
     uniform sampler2D uSampler;
     varying vec2 vTextureCoord;
     uniform float uTime;
     uniform float uIntensity;
-    uniform float uSegments;
 
     void main(void) {
-      if (uIntensity < 0.01) {
-        gl_FragColor = texture2D(uSampler, vTextureCoord);
-        return;
-      }
-      vec2 uv = vTextureCoord - 0.5;
+      vec2 uv = vTextureCoord - vec2(0.5, 0.5);
+      float dist = length(uv);
       float angle = atan(uv.y, uv.x);
-      float radius = length(uv);
-      float seg = 3.14159265 / uSegments;
-      angle = mod(angle, seg * 2.0);
-      if (angle > seg) angle = seg * 2.0 - angle;
-      // Blend with original based on intensity
-      vec2 kalUV = vec2(cos(angle), sin(angle)) * radius + 0.5;
-      vec4 kalColor = texture2D(uSampler, kalUV);
-      vec4 origColor = texture2D(uSampler, vTextureCoord);
-      gl_FragColor = mix(origColor, kalColor, uIntensity);
+      // Swirl strongest at centre, uses smoothstep falloff toward edge
+      float falloff = 1.0 - smoothstep(0.0, 0.65, dist);
+      float swirl = uIntensity * 5.5 * falloff;
+      angle += swirl + uTime * 0.18 * uIntensity;
+      vec2 swirlUV = vec2(cos(angle), sin(angle)) * dist + vec2(0.5, 0.5);
+      gl_FragColor = texture2D(uSampler, swirlUV);
     }
   `;
-  return new PIXI.Filter(undefined, frag, { uTime: 0.0, uIntensity: 0.0, uSegments: 6.0 });
+  return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
 function createBarrelFilter() {
@@ -234,11 +245,11 @@ function createBarrelFilter() {
     uniform float uIntensity;
 
     void main(void) {
-      vec2 uv = vTextureCoord - 0.5;
+      vec2 uv = vTextureCoord - vec2(0.5, 0.5);
       float r2 = dot(uv, uv);
       float k = uIntensity * 0.6;
       uv *= 1.0 + k * r2;
-      uv += 0.5;
+      uv += vec2(0.5, 0.5);
       if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       } else {
@@ -246,7 +257,7 @@ function createBarrelFilter() {
       }
     }
   `;
-  return new PIXI.Filter(undefined, frag, { uTime: 0.0, uIntensity: 0.0 });
+  return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
 function createScanlineFilter() {
@@ -267,7 +278,7 @@ function createScanlineFilter() {
       // Horizontal glitch slices
       float glitchAmt = uIntensity * 0.04;
       float sliceTime = floor(uTime * 8.0);
-      float sliceY = rand(sliceTime) ;
+      float sliceY = rand(sliceTime);
       float sliceH = 0.03 + rand(sliceTime + 1.0) * 0.06;
       if (abs(uv.y - sliceY) < sliceH) {
         uv.x += (rand(sliceTime + 2.0) - 0.5) * glitchAmt * 3.0;
@@ -277,15 +288,14 @@ function createScanlineFilter() {
       vec4 color = texture2D(uSampler, uv);
 
       // Scanlines
-      float lineFreq = 180.0;
-      float line = sin(uv.y * lineFreq) * 0.5 + 0.5;
+      float line = sin(uv.y * 180.0) * 0.5 + 0.5;
       float darkBand = mix(1.0, 0.72, (1.0 - line) * uIntensity * 0.8);
       color.rgb *= darkBand;
 
       gl_FragColor = color;
     }
   `;
-  return new PIXI.Filter(undefined, frag, { uTime: 0.0, uIntensity: 0.0 });
+  return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
 // ─────────────────────────────────────────────
@@ -457,13 +467,13 @@ function mainTick() {
   const dt      = now - lastTimeSec;
   lastTimeSec   = now;
 
-  const { wave, chroma, kaleido, barrel, scanline } = window._filters;
+  const { wave, chroma, vortex, barrel, scanline } = window._filters;
 
   // ── Update time uniforms ──
   const t = now;
   wave.uniforms.uTime     = t;
   chroma.uniforms.uTime   = t;
-  kaleido.uniforms.uTime  = t;
+  vortex.uniforms.uTime   = t;
   barrel.uniforms.uTime   = t;
   scanline.uniforms.uTime = t;
 
@@ -481,7 +491,7 @@ function mainTick() {
     const introRamp = Math.min(1, elapsed / INTRO_DURATION) * 0.3;
     wave.uniforms.uIntensity     = introRamp * 0.6;
     chroma.uniforms.uIntensity   = introRamp * 0.3;
-    kaleido.uniforms.uIntensity  = 0;
+    vortex.uniforms.uIntensity   = 0.0;
     barrel.uniforms.uIntensity   = introRamp * 0.15;
     scanline.uniforms.uIntensity = introRamp * 0.4;
 
@@ -522,7 +532,7 @@ function mainTick() {
 
     wave.uniforms.uIntensity     = mode.wave     + pulseValue * PULSE_STRENGTH;
     chroma.uniforms.uIntensity   = mode.chroma   + pulseValue * PULSE_STRENGTH * 0.6;
-    kaleido.uniforms.uIntensity  = mode.kaleido  + pulseValue * PULSE_STRENGTH * 0.4;
+    vortex.uniforms.uIntensity   = mode.vortex   + pulseValue * PULSE_STRENGTH * 0.4;
     barrel.uniforms.uIntensity   = mode.barrel   + pulseValue * PULSE_STRENGTH * 0.5;
     scanline.uniforms.uIntensity = mode.scanline + pulseValue * PULSE_STRENGTH * 0.7;
   }
