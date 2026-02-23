@@ -50,16 +50,21 @@ let dropHandled        = false;
 // base intensities per effect mode, beat pulse adds on top of these.
 // modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
 const EFFECT_MODES = [
-  // --- existing 4 ---
-  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0 },  // wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0 },  // hue shift
-  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0 },  // glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0 },  // barrel + hue
-  // --- new 4 ---
-  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0  }, // horizontal chroma dominant
-  { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35 }, // swirl + horiz chroma
-  { wave: 0.1, chroma: 0.0,  vortex: 0.6, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.45 }, // swirl + hue rotation
-  { wave: 0.6, chroma: 0.2,  vortex: 0.0, barrel: 0.5, scanline: 0.8, horizChroma: 0.7, swirl: 0.0  }, // glitch + horiz chroma
+  // --- original 4 ---
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // hue shift
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // barrel + hue
+  // --- chromatic 4 ---
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // horizontal chroma dominant
+  { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // swirl + horiz chroma
+  { wave: 0.1, chroma: 0.0,  vortex: 0.6, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.45, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // swirl + hue rotation
+  { wave: 0.6, chroma: 0.2,  vortex: 0.0, barrel: 0.5, scanline: 0.8, horizChroma: 0.7, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // glitch + horiz chroma
+  // --- new datamosh 4 ---
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.7, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // VHS slice jitter
+  { wave: 0.3, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.3, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.8, blockCorrupt: 0.0, posterize: 0.0 }, // analog RGB drift
+  { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0 }, // MPEG block corrupt
+  { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.5 }, // bit-crush + hue
 ];
 
 
@@ -115,18 +120,22 @@ function setupPixi() {
   particleContainer = new PIXI.Container();
   pixiApp.stage.addChild(particleContainer);
 
-  const wave       = createWaveFilter();
-  const chroma     = createChromaFilter();
-  const vortex     = createVortexFilter();
-  const barrel     = createBarrelFilter();
-  const scanline   = createScanlineFilter();
+  const wave        = createWaveFilter();
+  const chroma      = createChromaFilter();
+  const vortex      = createVortexFilter();
+  const barrel      = createBarrelFilter();
+  const scanline    = createScanlineFilter();
   const horizChroma = createHorizChromaFilter();
-  const swirl      = createSwirlFilter();
+  const swirl       = createSwirlFilter();
+  const sliceJitter = createSliceJitterFilter();
+  const rgbDrift    = createRGBDriftFilter();
+  const blockCorrupt = createBlockCorruptFilter();
+  const posterize   = createPosterizeFilter();
 
-  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl];
+  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize];
 
   // stash on window so mainTick can grab without a closure
-  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl };
+  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize };
 
   pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
   pixiApp.ticker.add(mainTick);
@@ -355,6 +364,111 @@ function createSwirlFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
 }
 
+// many independent horizontal slices randomly displaced — classic VHS / data-mosh
+// shutter: each slice independently decides whether to fire on this frame,
+// threshold controlled by uIntensity so more slices tear at higher intensities
+function createSliceJitterFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    float rand(float x) { return fract(sin(x * 127.1) * 43758.5453); }
+
+    void main(void) {
+      vec2 uv = vTextureCoord;
+      float numSlices = 24.0;
+      float sliceIdx  = floor(uv.y * numSlices);
+      float t         = floor(uTime * 10.0);
+      float trigger   = rand(sliceIdx * 0.71 + t * 3.17);
+      if (trigger > 1.0 - uIntensity * 0.55) {
+        float offset = (rand(sliceIdx + t + 1.0) - 0.5) * uIntensity * 0.22;
+        uv.x = fract(uv.x + offset);
+      }
+      gl_FragColor = texture2D(uSampler, uv);
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// each RGB channel drifts on its own sinusoidal path — like an aging CRT
+// where the three guns are slightly mis-registered and wobble independently
+function createRGBDriftFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    void main(void) {
+      vec2 uv  = vTextureCoord;
+      float a  = uIntensity * 0.04;
+      vec2 rOff = vec2( a * sin(uTime * 1.3),        a * 0.25 * cos(uTime * 0.9));
+      vec2 gOff = vec2( a * sin(uTime * 2.1 + 1.0), -a * 0.15 * sin(uTime * 1.1));
+      vec2 bOff = vec2( a * sin(uTime * 1.7 + 2.1),  a * 0.30 * sin(uTime * 0.7));
+      float r = texture2D(uSampler, clamp(uv + rOff, 0.0, 1.0)).r;
+      float g = texture2D(uSampler, clamp(uv + gOff, 0.0, 1.0)).g;
+      float b = texture2D(uSampler, clamp(uv + bOff, 0.0, 1.0)).b;
+      float alpha = texture2D(uSampler, uv).a;
+      gl_FragColor = vec4(r, g, b, alpha);
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// MPEG-style block corruption — image divided into blocks, random blocks
+// displaced horizontally (and a touch vertically), like a lossy codec choking
+function createBlockCorruptFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    float rand(float x) { return fract(sin(x * 127.1) * 43758.5453); }
+
+    void main(void) {
+      vec2  uv      = vTextureCoord;
+      float bSize   = 0.07;
+      vec2  blockId = floor(uv / bSize);
+      float t       = floor(uTime * 6.0);
+      float seed    = blockId.x + blockId.y * 19.0 + t * 37.0;
+      float trigger = rand(seed);
+      if (trigger > 1.0 - uIntensity * 0.4) {
+        float ox = (rand(seed + 1.0) - 0.5) * uIntensity * 0.20;
+        float oy = (rand(seed + 2.0) - 0.5) * uIntensity * 0.04;
+        uv = clamp(uv + vec2(ox, oy), 0.0, 1.0);
+      }
+      gl_FragColor = texture2D(uSampler, uv);
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// bit-crush / posterize — quantises colour to N levels. at rest ~8 levels
+// (visible but not harsh); on a beat pulse it slams down to 2–3 levels
+// for a hard digital-corruption flash before resolving back
+function createPosterizeFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+
+    void main(void) {
+      vec4 color = texture2D(uSampler, vTextureCoord);
+      float levels = mix(20.0, 2.0, clamp(uIntensity, 0.0, 1.0));
+      color.rgb = floor(color.rgb * levels + 0.5) / levels;
+      gl_FragColor = color;
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
+}
+
 
 // ── audio playback ───────────────────────────
 
@@ -524,17 +638,20 @@ function mainTick() {
   const elapsed = now - introStartTime;
   lastTimeSec   = now;
 
-  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl } = window._filters;
+  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize } = window._filters;
 
   // uTime is absolute audioCtx time, it never resets, so the shader
   // internal state (wave phase, swirl rotation, glitch positions) is
   // always different even when the song loops
-  wave.uniforms.uTime        = now;
-  chroma.uniforms.uTime      = now;
-  vortex.uniforms.uTime      = now;
-  barrel.uniforms.uTime      = now;
-  scanline.uniforms.uTime    = now;
-  horizChroma.uniforms.uTime = now;
+  wave.uniforms.uTime         = now;
+  chroma.uniforms.uTime       = now;
+  vortex.uniforms.uTime       = now;
+  barrel.uniforms.uTime       = now;
+  scanline.uniforms.uTime     = now;
+  horizChroma.uniforms.uTime  = now;
+  sliceJitter.uniforms.uTime  = now;
+  rgbDrift.uniforms.uTime     = now;
+  blockCorrupt.uniforms.uTime = now;
 
   if (now >= loopStartAudioTime && !dropHandled) handleDrop();
 
@@ -589,7 +706,11 @@ function mainTick() {
     barrel.uniforms.uIntensity          = mode.barrel      + pulseValue * PULSE_STRENGTH * 0.5;
     scanline.uniforms.uIntensity        = mode.scanline    + pulseValue * PULSE_STRENGTH * 0.7;
     horizChroma.uniforms.uIntensity     = mode.horizChroma + pulseValue * PULSE_STRENGTH * 0.7;
-    swirl.uniforms.uIntensity           = mode.swirl > 0 ? mode.swirl + pulseValue * PULSE_STRENGTH * 0.3 : 0.0;
+    swirl.uniforms.uIntensity            = mode.swirl        > 0 ? mode.swirl        + pulseValue * PULSE_STRENGTH * 0.3 : 0.0;
+    sliceJitter.uniforms.uIntensity      = mode.sliceJitter  > 0 ? mode.sliceJitter  + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
+    rgbDrift.uniforms.uIntensity         = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
+    blockCorrupt.uniforms.uIntensity     = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
+    posterize.uniforms.uIntensity        = mode.posterize    > 0 ? mode.posterize    + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
   }
 
   updateParticles();
