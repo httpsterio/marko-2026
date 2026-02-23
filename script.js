@@ -1,15 +1,13 @@
-// ─────────────────────────────────────────────
-//  MARKO BIRTHDAY 2026
-// ─────────────────────────────────────────────
+// marko birthday 2026
 
-// ── Timing constants ──
+// audio file constants
 const INTRO_DURATION   = 33.130;
-const LOOP_START_TRIM  = 0.028;
+const LOOP_START_TRIM  = 0.028;  // dead silence at the start of loop.mp3
 const LOOP_END         = 52.99230;
 const BPM              = 145;
-const BEAT_INTERVAL    = 60 / BPM; // ≈ 0.41379s
+const BEAT_INTERVAL    = 60 / BPM; // ~0.41379s
 
-// ── Lyric cues (seconds) ──
+// timestamps from lyrics.txt (M:SS:CS converted to seconds)
 const LYRICS = [
   { t:  5.00, text: "Today, we celebrate the birth of a true visionary." },
   { t:  8.57, text: "A man of unmatched intellect." },
@@ -24,58 +22,58 @@ const LYRICS = [
   { t: 30.64, text: "Congratulations, Marko." },
 ];
 
-// ── DOM refs ──
 const loadingScreen = document.getElementById('loading-screen');
 const startScreen   = document.getElementById('start-screen');
 const playBtn       = document.getElementById('play-btn');
 const hbdText       = document.getElementById('hbd-text');
 const lyricText     = document.getElementById('lyric-text');
 
-// ── App state ──
-let state = 'LOADING'; // LOADING | READY | INTRO_PLAYING | LOOP_PLAYING
-let audioCtx         = null;
-let introBuffer      = null;
-let loopBuffer       = null;
-let introSource      = null;
-let loopSource       = null;
-let introStartTime   = 0;  // audioCtx.currentTime when play was clicked
-let loopStartAudioTime = 0;
-let loopStarted      = false;
-let currentLyricIdx  = -1;
-let pixiApp          = null;
-let markoSprite      = null;
-let particleContainer = null;
-let particles        = [];
-let currentMode      = 0;
-let lastBeat         = -1;
-let dropHandled      = false;
+// app state machine: LOADING → READY → INTRO_PLAYING → LOOP_PLAYING
+let state = 'LOADING';
+let audioCtx           = null;
+let introBuffer        = null;
+let loopBuffer         = null;
+let introSource        = null;
+let loopSource         = null;
+let introStartTime     = 0;   // audioCtx.currentTime at play click
+let loopStartAudioTime = 0;   // when the loop is scheduled to begin
+let loopStarted        = false;
+let currentLyricIdx    = -1;
+let pixiApp            = null;
+let markoSprite        = null;
+let particleContainer  = null;
+let particles          = [];
+let currentMode        = 0;
+let lastBeat           = -1;
+let dropHandled        = false;
 
-// ── Effect modes config ──
-// Each mode: [wave, chroma, vortex, barrel, scanline] base intensities
+// base intensities per effect mode, beat pulse adds on top of these.
+// modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
 const EFFECT_MODES = [
-  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6 },  // Mode 0: Wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.9, barrel: 0.4, scanline: 0.1 },  // Mode 1: Vortex swirl
-  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0 },  // Mode 2: Glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.7, barrel: 1.0, scanline: 0.2 },  // Mode 3: Barrel + vortex
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6 },  // wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.9, barrel: 0.4, scanline: 0.1 },  // vortex swirl
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0 },  // glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.7, barrel: 1.0, scanline: 0.2 },  // barrel + vortex
 ];
 
-// ─────────────────────────────────────────────
-// STEP 1 — PRELOAD ASSETS
-// ─────────────────────────────────────────────
+
+// ── preload ──────────────────────────────────
+
 async function preload() {
   const imgEl = new Image();
 
+  // fetch all three assets in parallel; image decode is fire-and-forget
   const [introAB, loopAB] = await Promise.all([
     fetch('intro.mp3').then(r => r.arrayBuffer()),
     fetch('loop.mp3').then(r => r.arrayBuffer()),
     new Promise(resolve => {
       imgEl.onload = resolve;
-      imgEl.onerror = resolve; // Don't block if image fails
+      imgEl.onerror = resolve;
       imgEl.src = 'image.jpg';
     }),
   ]);
 
-  // Decode audio (needs AudioContext; use offline or temp one)
+  // temp AudioContext to decode audiofiles, real one created later inside a user gesture
   const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
   [introBuffer, loopBuffer] = await Promise.all([
     tmpCtx.decodeAudioData(introAB),
@@ -88,9 +86,9 @@ async function preload() {
   state = 'READY';
 }
 
-// ─────────────────────────────────────────────
-// STEP 2 — PIXI SCENE SETUP
-// ─────────────────────────────────────────────
+
+// ── pixi setup ───────────────────────────────
+
 function setupPixi() {
   pixiApp = new PIXI.Application({
     resizeTo: window,
@@ -102,18 +100,15 @@ function setupPixi() {
 
   document.getElementById('canvas-container').appendChild(pixiApp.view);
 
-  // Marko photo sprite
   const tex = PIXI.Texture.from('image.jpg');
   markoSprite = new PIXI.Sprite(tex);
   markoSprite.alpha = 0;
   coverSprite(markoSprite);
   pixiApp.stage.addChild(markoSprite);
 
-  // Particle container
   particleContainer = new PIXI.Container();
   pixiApp.stage.addChild(particleContainer);
 
-  // Attach filters
   const wave     = createWaveFilter();
   const chroma   = createChromaFilter();
   const vortex   = createVortexFilter();
@@ -122,15 +117,14 @@ function setupPixi() {
 
   markoSprite.filters = [wave, chroma, vortex, barrel, scanline];
 
+  // stash on window so mainTick can grab without a closure
   window._filters = { wave, chroma, vortex, barrel, scanline };
 
-  // Handle resize
   pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
-
-  // Main ticker
   pixiApp.ticker.add(mainTick);
 }
 
+// scale + center the sprite so it covers the viewport (like CSS background-size: cover)
 function coverSprite(sprite) {
   if (!sprite.texture.valid) {
     sprite.texture.on('update', () => coverSprite(sprite));
@@ -146,14 +140,13 @@ function coverSprite(sprite) {
   sprite.y = (sh - th * scale) / 2;
 }
 
-// ─────────────────────────────────────────────
-// STEP 3 — GLSL FILTERS
-// ─────────────────────────────────────────────
 
-// Custom vertex shader with explicit mediump precision so the vTextureCoord
-// varying precision matches the fragment shaders. PIXI's built-in vertex
-// shader leaves it implicitly highp, which Firefox's strict GLSL linker
-// can reject when the fragment declares mediump.
+// ── glsl filters ─────────────────────────────
+
+// PIXI's built-in vertex shader has no precision declaration, so vTextureCoord
+// ends up as implicitly highp. our fragment shaders use mediump, Firefox's
+// GLSL linker rejects that mismatch. using our own vertex shader with explicit
+// mediump keeps both sides consistent.
 const VERT_SRC = `
   precision mediump float;
   attribute vec2 aVertexPosition;
@@ -168,6 +161,8 @@ const VERT_SRC = `
   }
 `;
 
+// sine wave UV displacement, x and y use different frequencies and speeds
+// so it doesn't look like a regular grid ripple
 function createWaveFilter() {
   const frag = `
     precision mediump float;
@@ -188,6 +183,8 @@ function createWaveFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
+// RGB channel split, samples R and B at positions offset radially from center,
+// G stays put. cheap lens fringing / prismatic effect
 function createChromaFilter() {
   const frag = `
     precision mediump float;
@@ -210,9 +207,8 @@ function createChromaFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// Vortex swirl — replaces kaleidoscope.
-// Rotates UV coordinates around the centre; strongest at centre, fading to edge.
-// Also slowly spins over time when intensity > 0 for an organic feel.
+// polar coordinate swirl, converts uv to angle+distance, rotates the angle
+// more toward the center (smoothstep falloff), also drifts slowly over time
 function createVortexFilter() {
   const frag = `
     precision mediump float;
@@ -225,7 +221,6 @@ function createVortexFilter() {
       vec2 uv = vTextureCoord - vec2(0.5, 0.5);
       float dist = length(uv);
       float angle = atan(uv.y, uv.x);
-      // Swirl strongest at centre, uses smoothstep falloff toward edge
       float falloff = 1.0 - smoothstep(0.0, 0.65, dist);
       float swirl = uIntensity * 5.5 * falloff;
       angle += swirl + uTime * 0.18 * uIntensity;
@@ -236,6 +231,7 @@ function createVortexFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
+// barrel / fisheye distortion, pushes UV outward based on squared distance from center
 function createBarrelFilter() {
   const frag = `
     precision mediump float;
@@ -260,6 +256,8 @@ function createBarrelFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
+// CRT scanlines + glitch slices. rand() is a basic float hash.
+// floor(uTime * 8) snaps to a new random slice position 8 times per second
 function createScanlineFilter() {
   const frag = `
     precision mediump float;
@@ -275,7 +273,6 @@ function createScanlineFilter() {
     void main(void) {
       vec2 uv = vTextureCoord;
 
-      // Horizontal glitch slices
       float glitchAmt = uIntensity * 0.04;
       float sliceTime = floor(uTime * 8.0);
       float sliceY = rand(sliceTime);
@@ -287,7 +284,6 @@ function createScanlineFilter() {
 
       vec4 color = texture2D(uSampler, uv);
 
-      // Scanlines
       float line = sin(uv.y * 180.0) * 0.5 + 0.5;
       float darkBand = mix(1.0, 0.72, (1.0 - line) * uIntensity * 0.8);
       color.rgb *= darkBand;
@@ -298,33 +294,36 @@ function createScanlineFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// ─────────────────────────────────────────────
-// STEP 4 — AUDIO PLAYBACK
-// ─────────────────────────────────────────────
+
+// ── audio playback ───────────────────────────
+
 function startPlayback() {
+  // AudioContext must be created inside a user gesture (browser autoplay policy)
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  introStartTime    = audioCtx.currentTime;
+  introStartTime     = audioCtx.currentTime;
   loopStartAudioTime = audioCtx.currentTime + INTRO_DURATION;
 
-  // Intro
   introSource = audioCtx.createBufferSource();
   introSource.buffer = introBuffer;
   introSource.connect(audioCtx.destination);
   introSource.start(introStartTime);
 
-  // Loop (scheduled, seamless)
+  // schedule the loop to start exactly when the intro ends, no gap, no click.
+  // start() with an offset skips the dead silence at the head of the file
   loopSource = audioCtx.createBufferSource();
-  loopSource.buffer = loopBuffer;
-  loopSource.loop = true;
+  loopSource.buffer    = loopBuffer;
+  loopSource.loop      = true;
   loopSource.loopStart = LOOP_START_TRIM;
   loopSource.loopEnd   = LOOP_END;
   loopSource.connect(audioCtx.destination);
   loopSource.start(loopStartAudioTime, LOOP_START_TRIM);
 }
 
-// ─────────────────────────────────────────────
-// STEP 5 — BEAT SYNC
-// ─────────────────────────────────────────────
+
+// ── beat sync ────────────────────────────────
+
+// returns how many beats have elapsed since the loop started, and the
+// fractional position within the current beat (0 = downbeat, 1 = next beat)
 function getBeatInfo() {
   if (!loopStarted) return { beat: 0, phase: 0 };
   const elapsed   = audioCtx.currentTime - loopStartAudioTime;
@@ -332,9 +331,9 @@ function getBeatInfo() {
   return { beat: Math.floor(beatFloat), phase: beatFloat % 1 };
 }
 
-// ─────────────────────────────────────────────
-// STEP 6 — PARTICLES
-// ─────────────────────────────────────────────
+
+// ── particles ────────────────────────────────
+
 const PARTICLE_COLORS = [0x00ffff, 0xff00ff, 0xffcc00, 0xffffff, 0x00ff88];
 
 function spawnParticles() {
@@ -342,7 +341,7 @@ function spawnParticles() {
   const cy = pixiApp.screen.height / 2;
 
   for (let i = 0; i < 80; i++) {
-    const g = new PIXI.Graphics();
+    const g     = new PIXI.Graphics();
     const color = PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
     const type  = Math.floor(Math.random() * 3); // 0=dot, 1=triangle, 2=diamond
     const size  = 3 + Math.random() * 8;
@@ -357,14 +356,15 @@ function spawnParticles() {
     }
     g.endFill();
 
+    // evenly spread around 360° with a bit of jitter so it doesn't look like a clock
     const angle = (i / 80) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
     const speed = 3 + Math.random() * 9;
 
     g.x = cx;
     g.y = cy;
-    g._vx = Math.cos(angle) * speed;
-    g._vy = Math.sin(angle) * speed;
-    g._life = 1.0;
+    g._vx    = Math.cos(angle) * speed;
+    g._vy    = Math.sin(angle) * speed;
+    g._life  = 1.0;
     g._decay = 0.008 + Math.random() * 0.012;
 
     particleContainer.addChild(g);
@@ -372,11 +372,12 @@ function spawnParticles() {
   }
 }
 
+// iterate backwards so splicing doesn't mess up the index
 function updateParticles() {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p._vy += 0.12; // gravity
-    p._vx *= 0.985; // drag
+    p._vy += 0.12;   // gravity
+    p._vx *= 0.985;  // drag
     p._vy *= 0.985;
     p.x += p._vx;
     p.y += p._vy;
@@ -390,9 +391,9 @@ function updateParticles() {
   }
 }
 
-// ─────────────────────────────────────────────
-// STEP 7 — DROP HANDLER
-// ─────────────────────────────────────────────
+
+// ── drop handler ─────────────────────────────
+
 function handleDrop() {
   if (dropHandled) return;
   dropHandled = true;
@@ -401,21 +402,20 @@ function handleDrop() {
   spawnParticles();
   hbdText.classList.add('visible');
 
-  // Snap to max intensity for 2 beats, then settle
+  // slam all filters to max for ~2 beats then let the mode system take over
   Object.values(window._filters).forEach(f => {
     if (f.uniforms.uIntensity !== undefined) f.uniforms.uIntensity = 1.5;
   });
   setTimeout(() => { currentMode = 0; }, BEAT_INTERVAL * 2 * 1000);
 }
 
-// ─────────────────────────────────────────────
-// STEP 8 — LYRIC SYSTEM
-// ─────────────────────────────────────────────
-let lyricVisible = false;
+
+// ── lyrics ───────────────────────────────────
+
 let lyricFadeOutScheduled = false;
 
 function updateLyrics(elapsed) {
-  // elapsed = time since intro started
+  // find the last cue whose timestamp we've passed
   let active = -1;
   for (let i = 0; i < LYRICS.length; i++) {
     if (elapsed >= LYRICS[i].t) active = i;
@@ -423,40 +423,37 @@ function updateLyrics(elapsed) {
   }
 
   if (active === currentLyricIdx) {
-    // Check if we need to schedule fade-out
+    // same line is still showing, check if it's time to start fading it out.
+    // fade starts 0.4s before the next cue so there's a clean gap between lines
     if (active >= 0 && !lyricFadeOutScheduled) {
-      const nextT = (active + 1 < LYRICS.length) ? LYRICS[active + 1].t : INTRO_DURATION + 0.4;
+      const nextT  = (active + 1 < LYRICS.length) ? LYRICS[active + 1].t : INTRO_DURATION + 0.4;
       const fadeAt = nextT - 0.4;
       if (elapsed >= fadeAt) {
         lyricText.classList.remove('visible');
-        lyricVisible = false;
         lyricFadeOutScheduled = true;
       }
     }
     return;
   }
 
-  currentLyricIdx = active;
+  currentLyricIdx       = active;
   lyricFadeOutScheduled = false;
 
   if (active < 0 || elapsed >= INTRO_DURATION) {
     lyricText.classList.remove('visible');
     lyricText.textContent = '';
-    lyricVisible = false;
     return;
   }
 
   lyricText.textContent = LYRICS[active].text;
   lyricText.classList.remove('visible');
-  // Force reflow so transition fires
-  void lyricText.offsetWidth;
+  void lyricText.offsetWidth; // force reflow so the CSS transition re-fires
   lyricText.classList.add('visible');
-  lyricVisible = true;
 }
 
-// ─────────────────────────────────────────────
-// STEP 9 — MAIN TICK
-// ─────────────────────────────────────────────
+
+// ── main tick ────────────────────────────────
+
 let lastTimeSec = 0;
 
 function mainTick() {
@@ -464,30 +461,28 @@ function mainTick() {
 
   const now     = audioCtx.currentTime;
   const elapsed = now - introStartTime;
-  const dt      = now - lastTimeSec;
   lastTimeSec   = now;
 
   const { wave, chroma, vortex, barrel, scanline } = window._filters;
 
-  // ── Update time uniforms ──
-  const t = now;
-  wave.uniforms.uTime     = t;
-  chroma.uniforms.uTime   = t;
-  vortex.uniforms.uTime   = t;
-  barrel.uniforms.uTime   = t;
-  scanline.uniforms.uTime = t;
+  // uTime is absolute audioCtx time, it never resets, so the shader
+  // internal state (wave phase, swirl rotation, glitch positions) is
+  // always different even when the song loops
+  wave.uniforms.uTime     = now;
+  chroma.uniforms.uTime   = now;
+  vortex.uniforms.uTime   = now;
+  barrel.uniforms.uTime   = now;
+  scanline.uniforms.uTime = now;
 
-  // ── Drop check ──
-  if (now >= loopStartAudioTime && !dropHandled) {
-    handleDrop();
-  }
+  if (now >= loopStartAudioTime && !dropHandled) handleDrop();
 
   if (state === 'INTRO_PLAYING') {
-    // ── Sprite fade in ──
-    const fadeProgress = Math.min(1, elapsed / 20);
-    markoSprite.alpha = fadeProgress;
 
-    // ── Intro intensity ramp ──
+    // photo fades in over the first 20s
+    markoSprite.alpha = Math.min(1, elapsed / 20);
+
+    // effects gently ramp up during the intro so it's not completely static,
+    // but stays subtle, vortex stays off until the drop
     const introRamp = Math.min(1, elapsed / INTRO_DURATION) * 0.3;
     wave.uniforms.uIntensity     = introRamp * 0.6;
     chroma.uniforms.uIntensity   = introRamp * 0.3;
@@ -495,39 +490,35 @@ function mainTick() {
     barrel.uniforms.uIntensity   = introRamp * 0.15;
     scanline.uniforms.uIntensity = introRamp * 0.4;
 
-    // ── Lyrics ──
     updateLyrics(elapsed);
 
-    // ── Transition state ──
-    if (now >= loopStartAudioTime) {
-      state = 'LOOP_PLAYING';
-    }
+    if (now >= loopStartAudioTime) state = 'LOOP_PLAYING';
 
   } else if (state === 'LOOP_PLAYING') {
+
     markoSprite.alpha = 1;
     lyricText.classList.remove('visible');
 
     const { beat, phase } = getBeatInfo();
 
-    // ── Beat events ──
     if (beat !== lastBeat) {
       lastBeat = beat;
 
-      // Pulse HBD text
+      // re-trigger the CSS pulse animation on each beat by removing the class,
+      // forcing a reflow, then adding it back
       hbdText.classList.remove('pulse');
       void hbdText.offsetWidth;
       hbdText.classList.add('pulse');
 
-      // Cycle mode every 16 beats (4 bars)
       if (beat > 0 && beat % 16 === 0) {
         currentMode = (currentMode + 1) % EFFECT_MODES.length;
       }
     }
 
-    // ── Pulse envelope: sharp attack, exponential decay ──
-    const pulseValue = Math.pow(1 - phase, 2.5);
-
-    const mode = EFFECT_MODES[currentMode];
+    // pulse envelope: (1-phase)^2.5 gives a sharp hit on the downbeat that
+    // decays quickly, adds on top of the mode's base intensity
+    const pulseValue    = Math.pow(1 - phase, 2.5);
+    const mode          = EFFECT_MODES[currentMode];
     const PULSE_STRENGTH = 0.8;
 
     wave.uniforms.uIntensity     = mode.wave     + pulseValue * PULSE_STRENGTH;
@@ -537,24 +528,20 @@ function mainTick() {
     scanline.uniforms.uIntensity = mode.scanline + pulseValue * PULSE_STRENGTH * 0.7;
   }
 
-  // ── Particles ──
   updateParticles();
 }
 
-// ─────────────────────────────────────────────
-// STEP 10 — PLAY BUTTON
-// ─────────────────────────────────────────────
+
+// ── init ─────────────────────────────────────
+
 playBtn.addEventListener('click', () => {
   startScreen.style.display = 'none';
   setupPixi();
   startPlayback();
-  state = 'INTRO_PLAYING';
+  state       = 'INTRO_PLAYING';
   lastTimeSec = audioCtx.currentTime;
 });
 
-// ─────────────────────────────────────────────
-// BOOT
-// ─────────────────────────────────────────────
 preload().catch(err => {
   console.error('Preload failed:', err);
   loadingScreen.querySelector('.loading-text').textContent = 'ERROR: ' + err.message;
