@@ -51,9 +51,9 @@ let dropHandled        = false;
 // modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
 const EFFECT_MODES = [
   { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6 },  // wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.9, barrel: 0.4, scanline: 0.1 },  // vortex swirl
+  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1 },  // hue shift
   { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0 },  // glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.7, barrel: 1.0, scanline: 0.2 },  // barrel + vortex
+  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2 },  // barrel + hue
 ];
 
 
@@ -207,8 +207,10 @@ function createChromaFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// polar coordinate swirl, converts uv to angle+distance, rotates the angle
-// more toward the center (smoothstep falloff), also drifts slowly over time
+// hue rotation using Rodrigues' axis-angle formula on RGB.
+// rotating around the (1,1,1) axis shifts hue while preserving luminance relationships.
+// uIntensity drives the rotation angle, so hue pops on each beat and decays back.
+// no spatial distortion — purely color-based, so it's trippy without being dizzying
 function createVortexFilter() {
   const frag = `
     precision mediump float;
@@ -217,15 +219,19 @@ function createVortexFilter() {
     uniform float uTime;
     uniform float uIntensity;
 
+    vec3 hueShift(vec3 col, float angle) {
+      vec3 k = vec3(0.57735); // normalize(1,1,1) — the hue rotation axis
+      float c = cos(angle);
+      float s = sin(angle);
+      return col * c + cross(k, col) * s + k * dot(k, col) * (1.0 - c);
+    }
+
     void main(void) {
-      vec2 uv = vTextureCoord - vec2(0.5, 0.5);
-      float dist = length(uv);
-      float angle = atan(uv.y, uv.x);
-      float falloff = 1.0 - smoothstep(0.0, 0.65, dist);
-      float swirl = uIntensity * 5.5 * falloff;
-      angle += swirl + uTime * 0.18 * uIntensity;
-      vec2 swirlUV = vec2(cos(angle), sin(angle)) * dist + vec2(0.5, 0.5);
-      gl_FragColor = texture2D(uSampler, swirlUV);
+      vec4 color = texture2D(uSampler, vTextureCoord);
+      // 1.8 rad (~103deg) at full intensity — enough for a strong shift without flipping to complementary
+      float angle = uIntensity * 1.8;
+      color.rgb = hueShift(color.rgb, angle);
+      gl_FragColor = color;
     }
   `;
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
