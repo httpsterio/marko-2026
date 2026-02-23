@@ -64,12 +64,12 @@ async function preload() {
 
   // fetch all three assets in parallel; image decode is fire-and-forget
   const [introAB, loopAB] = await Promise.all([
-    fetch('intro.mp3').then(r => r.arrayBuffer()),
-    fetch('loop.mp3').then(r => r.arrayBuffer()),
+    fetch('assets/intro.mp3').then(r => r.arrayBuffer()),
+    fetch('assets/loop.mp3').then(r => r.arrayBuffer()),
     new Promise(resolve => {
       imgEl.onload = resolve;
       imgEl.onerror = resolve;
-      imgEl.src = 'image.jpg';
+      imgEl.src = 'assets/image.jpg';
     }),
   ]);
 
@@ -100,7 +100,7 @@ function setupPixi() {
 
   document.getElementById('canvas-container').appendChild(pixiApp.view);
 
-  const tex = PIXI.Texture.from('image.jpg');
+  const tex = PIXI.Texture.from('assets/image.jpg');
   markoSprite = new PIXI.Sprite(tex);
   markoSprite.alpha = 0;
   coverSprite(markoSprite);
