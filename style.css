@@ -1,0 +1,214 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Courier New', Courier, monospace;
+  color: #00ff88;
+}
+
+/* ── Loading Screen ── */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+
+.loading-ring {
+  width: 80px;
+  height: 80px;
+  border: 3px solid #001a0d;
+  border-top: 3px solid #00ff88;
+  border-right: 3px solid #00ccff;
+  border-radius: 50%;
+  animation: spin 1.2s linear infinite;
+  box-shadow: 0 0 20px #00ff8866, inset 0 0 20px #00ccff22;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 13px;
+  letter-spacing: 6px;
+  color: #00ff88;
+  opacity: 0.7;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── Start Screen ── */
+#start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+}
+
+.start-title {
+  font-size: clamp(40px, 8vw, 80px);
+  font-weight: 900;
+  letter-spacing: 16px;
+  text-align: center;
+  line-height: 1.1;
+  color: #fff;
+  text-shadow:
+    0 0 10px #00ccff,
+    0 0 30px #00ccff88,
+    0 0 60px #00ccff44;
+}
+
+.start-title span {
+  font-size: 0.55em;
+  color: #00ccff;
+  letter-spacing: 24px;
+  text-shadow:
+    0 0 10px #00ccff,
+    0 0 40px #00ccffaa;
+}
+
+#play-btn {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 2px solid #00ccff;
+  background: transparent;
+  cursor: pointer;
+  color: #00ccff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 0 20px #00ccff88,
+    inset 0 0 20px #00ccff11;
+  animation: btn-glow 2s ease-in-out infinite;
+  transition: transform 0.1s;
+  outline: none;
+}
+
+#play-btn:hover {
+  transform: scale(1.08);
+  box-shadow:
+    0 0 40px #00ccffcc,
+    inset 0 0 30px #00ccff22;
+}
+
+#play-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-inner {
+  font-size: 28px;
+  margin-left: 5px;
+  pointer-events: none;
+}
+
+@keyframes btn-glow {
+  0%, 100% { box-shadow: 0 0 20px #00ccff88, inset 0 0 20px #00ccff11; }
+  50% { box-shadow: 0 0 50px #00ccffcc, inset 0 0 30px #00ccff33; }
+}
+
+.start-hint {
+  font-size: 11px;
+  letter-spacing: 8px;
+  color: #00ff88;
+  opacity: 0.5;
+  animation: pulse-text 2s ease-in-out infinite;
+}
+
+/* ── Canvas Container ── */
+#canvas-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+}
+
+#canvas-container canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── HBD Text ── */
+#hbd-text {
+  position: fixed;
+  top: 8%;
+  width: 100%;
+  text-align: center;
+  z-index: 10;
+  font-size: clamp(18px, 3vw, 36px);
+  font-weight: 900;
+  letter-spacing: clamp(4px, 1.5vw, 14px);
+  color: #fff;
+  text-shadow:
+    0 0 8px #ff00ff,
+    0 0 20px #ff00ffaa,
+    0 0 40px #ff00ff66;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+  pointer-events: none;
+  animation: none;
+}
+
+#hbd-text.visible {
+  opacity: 1;
+}
+
+#hbd-text.pulse {
+  animation: hbd-pulse 0.41379s ease-out;
+}
+
+@keyframes hbd-pulse {
+  0% { text-shadow: 0 0 8px #ff00ff, 0 0 20px #ff00ffaa, 0 0 40px #ff00ff66; transform: scale(1); }
+  10% { text-shadow: 0 0 20px #ff00ff, 0 0 60px #ff00ff, 0 0 100px #ff00ffcc; transform: scale(1.04); }
+  100% { text-shadow: 0 0 8px #ff00ff, 0 0 20px #ff00ffaa, 0 0 40px #ff00ff66; transform: scale(1); }
+}
+
+/* ── Lyric Text ── */
+#lyric-text {
+  position: fixed;
+  bottom: 15%;
+  width: 100%;
+  text-align: center;
+  z-index: 10;
+  font-size: clamp(18px, 2.8vw, 32px);
+  font-style: italic;
+  letter-spacing: 2px;
+  color: #fff;
+  text-shadow:
+    0 0 6px #00ccff,
+    0 0 20px #00ccff88;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  padding: 0 40px;
+}
+
+#lyric-text.visible {
+  opacity: 1;
+}
