@@ -51,20 +51,25 @@ let dropHandled        = false;
 // modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
 const EFFECT_MODES = [
   // --- original 4 ---
-  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // hue shift
-  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // barrel + hue
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // hue shift
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // barrel + hue
   // --- chromatic 4 ---
-  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // horizontal chroma dominant
-  { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // swirl + horiz chroma
-  { wave: 0.1, chroma: 0.0,  vortex: 0.6, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.45, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // swirl + hue rotation
-  { wave: 0.6, chroma: 0.2,  vortex: 0.0, barrel: 0.5, scanline: 0.8, horizChroma: 0.7, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // glitch + horiz chroma
-  // --- new datamosh 4 ---
-  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.7, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0 }, // VHS slice jitter
-  { wave: 0.3, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.3, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.8, blockCorrupt: 0.0, posterize: 0.0 }, // analog RGB drift
-  { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0 }, // MPEG block corrupt
-  { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.1 }, // bit-crush + hue
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // horizontal chroma dominant
+  { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // swirl + horiz chroma
+  { wave: 0.1, chroma: 0.0,  vortex: 0.6, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.45, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // swirl + hue rotation
+  { wave: 0.6, chroma: 0.2,  vortex: 0.0, barrel: 0.5, scanline: 0.8, horizChroma: 0.7, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // glitch + horiz chroma
+  // --- datamosh 4 ---
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.7, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // VHS slice jitter
+  { wave: 0.3, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.3, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.8, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // analog RGB drift
+  { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // MPEG block corrupt
+  { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.1, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // bit-crush + hue
+  // --- 3d movement 4 (16 total = 256 beats = exactly 2 loops) ---
+  { wave: 0.1, chroma: 0.2,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.8, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // luma parallax
+  { wave: 0.2, chroma: 0.0,  vortex: 0.3, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.7, depthChroma: 0.0, zoomBlur: 0.0 }, // perspective tilt
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.3, perspTilt: 0.0, depthChroma: 0.8, zoomBlur: 0.0 }, // depth chroma + parallax
+  { wave: 0.0, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.9 }, // zoom blur / rush
 ];
 
 
@@ -127,15 +132,19 @@ function setupPixi() {
   const scanline    = createScanlineFilter();
   const horizChroma = createHorizChromaFilter();
   const swirl       = createSwirlFilter();
-  const sliceJitter = createSliceJitterFilter();
-  const rgbDrift    = createRGBDriftFilter();
+  const sliceJitter  = createSliceJitterFilter();
+  const rgbDrift     = createRGBDriftFilter();
   const blockCorrupt = createBlockCorruptFilter();
-  const posterize   = createPosterizeFilter();
+  const posterize    = createPosterizeFilter();
+  const lumaParallax = createLumaParallaxFilter();
+  const perspTilt    = createPerspTiltFilter();
+  const depthChroma  = createDepthChromaFilter();
+  const zoomBlur     = createZoomBlurFilter();
 
-  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize];
+  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur];
 
   // stash on window so mainTick can grab without a closure
-  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize };
+  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur };
 
   pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
   pixiApp.ticker.add(mainTick);
@@ -471,6 +480,102 @@ function createPosterizeFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
 }
 
+// treats image luminance as a depth map — bright pixels are "closer",
+// dark pixels are "further". a slowly-rotating viewpoint offset displaces
+// each pixel proportional to its depth, creating real parallax movement.
+function createLumaParallaxFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    void main(void) {
+      vec2 uv   = vTextureCoord;
+      float luma = dot(texture2D(uSampler, uv).rgb, vec3(0.299, 0.587, 0.114));
+      // slowly rotating pan direction — different x/y speeds avoid axis-locked drift
+      vec2 pan  = vec2(cos(uTime * 0.35), sin(uTime * 0.27)) * uIntensity * 0.07;
+      // bright pixels shift more than dark ones (parallax)
+      gl_FragColor = texture2D(uSampler, clamp(uv + (luma - 0.5) * pan, 0.0, 1.0));
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// non-linear perspective warp — X scale depends on Y position and vice versa,
+// simulating a surface rocking on two 3D axes simultaneously. the oscillation
+// frequencies are irrational so it never settles into a visible loop.
+function createPerspTiltFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    void main(void) {
+      vec2 uv = vTextureCoord - vec2(0.5);
+      float tx = sin(uTime * 0.37) * uIntensity * 0.40;
+      float ty = cos(uTime * 0.29) * uIntensity * 0.25;
+      // keystone / foreshortening: scale each axis by the opposite coordinate
+      uv.x *= 1.0 + tx * uv.y;
+      uv.y *= 1.0 + ty * uv.x;
+      gl_FragColor = texture2D(uSampler, clamp(uv + vec2(0.5), 0.0, 1.0));
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// luminance-driven chromatic separation — bright areas get strong R/B fringing
+// (they're "closer" to the viewer) while dark areas stay clean. the separation
+// direction rotates with time, making the colour split shimmer and spin.
+function createDepthChromaFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+    uniform float uTime;
+
+    void main(void) {
+      vec2 uv    = vTextureCoord;
+      vec4 base  = texture2D(uSampler, uv);
+      float luma = dot(base.rgb, vec3(0.299, 0.587, 0.114));
+      // separation magnitude scales with brightness — foreground gets more fringing
+      vec2 sep   = vec2(cos(uTime * 0.52), sin(uTime * 0.41)) * uIntensity * luma * 0.04;
+      float r    = texture2D(uSampler, clamp(uv + sep, 0.0, 1.0)).r;
+      float b    = texture2D(uSampler, clamp(uv - sep, 0.0, 1.0)).b;
+      gl_FragColor = vec4(r, base.g, b, base.a);
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
+}
+
+// radial zoom blur — averages 6 samples along the zoom axis toward the centre,
+// simulating the image rushing at the viewer. beat pulse spikes the blur amount
+// so each downbeat feels like a push through 3D space.
+function createZoomBlurFilter() {
+  const frag = `
+    precision mediump float;
+    uniform sampler2D uSampler;
+    varying vec2 vTextureCoord;
+    uniform float uIntensity;
+
+    void main(void) {
+      vec2 uv  = vTextureCoord - vec2(0.5);
+      float amt = uIntensity * 0.05;
+      vec4 col = vec4(0.0);
+      for (int i = 0; i < 6; i++) {
+        float t = float(i) / 5.0;
+        col += texture2D(uSampler, uv * (1.0 - amt * t) + vec2(0.5));
+      }
+      gl_FragColor = col / 6.0;
+    }
+  `;
+  return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
+}
+
 
 // ── audio playback ───────────────────────────
 
@@ -640,7 +745,7 @@ function mainTick() {
   const elapsed = now - introStartTime;
   lastTimeSec   = now;
 
-  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize } = window._filters;
+  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur } = window._filters;
 
   // uTime is absolute audioCtx time, it never resets, so the shader
   // internal state (wave phase, swirl rotation, glitch positions) is
@@ -651,9 +756,12 @@ function mainTick() {
   barrel.uniforms.uTime       = now;
   scanline.uniforms.uTime     = now;
   horizChroma.uniforms.uTime  = now;
-  sliceJitter.uniforms.uTime  = now;
-  rgbDrift.uniforms.uTime     = now;
-  blockCorrupt.uniforms.uTime = now;
+  sliceJitter.uniforms.uTime   = now;
+  rgbDrift.uniforms.uTime      = now;
+  blockCorrupt.uniforms.uTime  = now;
+  lumaParallax.uniforms.uTime  = now;
+  perspTilt.uniforms.uTime     = now;
+  depthChroma.uniforms.uTime   = now;
 
   if (now >= loopStartAudioTime && !dropHandled) handleDrop();
 
@@ -677,6 +785,10 @@ function mainTick() {
     rgbDrift.uniforms.uIntensity     = 0.0;
     blockCorrupt.uniforms.uIntensity = 0.0;
     posterize.uniforms.uIntensity    = 0.0;
+    lumaParallax.uniforms.uIntensity = 0.0;
+    perspTilt.uniforms.uIntensity    = 0.0;
+    depthChroma.uniforms.uIntensity  = 0.0;
+    zoomBlur.uniforms.uIntensity     = 0.0;
 
     updateLyrics(elapsed);
 
@@ -723,6 +835,10 @@ function mainTick() {
     rgbDrift.uniforms.uIntensity         = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
     blockCorrupt.uniforms.uIntensity     = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
     posterize.uniforms.uIntensity        = mode.posterize    > 0 ? mode.posterize    + pulseValue * PULSE_STRENGTH * 0.25 : 0.0;
+    lumaParallax.uniforms.uIntensity     = mode.lumaParallax > 0 ? mode.lumaParallax + pulseValue * PULSE_STRENGTH * 0.5  : 0.0;
+    perspTilt.uniforms.uIntensity        = mode.perspTilt    > 0 ? mode.perspTilt    + pulseValue * PULSE_STRENGTH * 0.6  : 0.0;
+    depthChroma.uniforms.uIntensity      = mode.depthChroma  > 0 ? mode.depthChroma  + pulseValue * PULSE_STRENGTH * 0.6  : 0.0;
+    zoomBlur.uniforms.uIntensity         = mode.zoomBlur     > 0 ? mode.zoomBlur     + pulseValue * PULSE_STRENGTH * 0.7  : 0.0;
   }
 
   updateParticles();
