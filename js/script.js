@@ -715,7 +715,10 @@ function mainTick() {
     barrel.uniforms.uIntensity          = mode.barrel      + pulseValue * PULSE_STRENGTH * 0.5;
     scanline.uniforms.uIntensity        = mode.scanline    + pulseValue * PULSE_STRENGTH * 0.7;
     horizChroma.uniforms.uIntensity     = mode.horizChroma + pulseValue * PULSE_STRENGTH * 0.7;
-    swirl.uniforms.uIntensity            = mode.swirl        > 0 ? mode.swirl        + pulseValue * PULSE_STRENGTH * 0.3 : 0.0;
+    // irrational beat step → signed per-beat modifier so the beat kick varies:
+    // some beats push further CCW, some barely nudge, some pull slightly CW
+    const swirlBeatMod = Math.sin(beat * 1.8475);
+    swirl.uniforms.uIntensity            = mode.swirl        > 0 ? mode.swirl        + swirlBeatMod * pulseValue * PULSE_STRENGTH * 0.7 : 0.0;
     sliceJitter.uniforms.uIntensity      = mode.sliceJitter  > 0 ? mode.sliceJitter  + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
     rgbDrift.uniforms.uIntensity         = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
     blockCorrupt.uniforms.uIntensity     = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
