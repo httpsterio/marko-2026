@@ -1,13 +1,23 @@
 // marko birthday 2026
 
-// audio file constants
+
+// ══════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════
+
+// Audio file timing (seconds)
 const INTRO_DURATION   = 33.130;
 const LOOP_START_TRIM  = 0.028;  // dead silence at the start of loop.mp3
 const LOOP_END         = 52.99230;
 const BPM              = 145;
-const BEAT_INTERVAL    = 60 / BPM; // ~0.41379s
+const BEAT_INTERVAL    = 60 / BPM; // ~0.41379s per beat
 
-// timestamps from lyrics.txt (M:SS:CS converted to seconds)
+
+// ══════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════
+
+// Lyric cue points from lyrics.txt (M:SS:CS converted to seconds)
 const LYRICS = [
   { t:  5.00, text: "Today, we celebrate the birth of a true visionary." },
   { t:  8.57, text: "A man of unmatched intellect." },
@@ -22,43 +32,17 @@ const LYRICS = [
   { t: 30.64, text: "Congratulations, Marko." },
 ];
 
-const loadingScreen = document.getElementById('loading-screen');
-const startScreen   = document.getElementById('start-screen');
-const playBtn       = document.getElementById('play-btn');
-const hbdText       = document.getElementById('hbd-text');
-const lyricText     = document.getElementById('lyric-text');
-
-// app state machine: LOADING → READY → INTRO_PLAYING → LOOP_PLAYING
-let state = 'LOADING';
-let audioCtx           = null;
-let introBuffer        = null;
-let loopBuffer         = null;
-let introSource        = null;
-let loopSource         = null;
-let introStartTime     = 0;   // audioCtx.currentTime at play click
-let loopStartAudioTime = 0;   // when the loop is scheduled to begin
-let loopStarted        = false;
-let currentLyricIdx    = -1;
-let pixiApp            = null;
-let markoSprite        = null;
-let particleContainer  = null;
-let particles          = [];
-let currentMode        = 0;
-let lastBeat           = -1;
-let dropHandled        = false;
-let imageElements      = [];   // preloaded HTMLImageElements
-let imageTextures      = [];   // PIXI textures, built in setupPixi
-let currentImageIndex  = 0;
-let touchStartX        = 0;
-
-// base intensities per effect mode, beat pulse adds on top of these.
-// modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
+/**
+ * Base intensities per effect mode. Beat pulse adds on top of these.
+ * Modes cycle every 16 beats (~6.5 s) in four themed groups of four.
+ * 16 modes × 16 beats = 256 beats = exactly 2 full loop iterations.
+ */
 const EFFECT_MODES = [
   // --- original 4 ---
-  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // wave + scanlines
-  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // hue shift
-  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // glitch/chroma
-  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // barrel + hue
+  { wave: 0.9, chroma: 0.15, vortex: 0.0, barrel: 0.2, scanline: 0.6, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // wave + scanlines
+  { wave: 0.3, chroma: 0.5,  vortex: 0.7, barrel: 0.4, scanline: 0.1, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // hue shift
+  { wave: 0.3, chroma: 0.9,  vortex: 0.0, barrel: 0.1, scanline: 1.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // glitch/chroma
+  { wave: 0.5, chroma: 0.3,  vortex: 0.5, barrel: 1.0, scanline: 0.2, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // barrel + hue
   // --- chromatic 4 ---
   { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.1, scanline: 0.3, horizChroma: 0.9, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // horizontal chroma dominant
   { wave: 0.4, chroma: 0.3,  vortex: 0.0, barrel: 0.0, scanline: 0.2, horizChroma: 0.5, swirl: 0.35, sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // swirl + horiz chroma
@@ -69,18 +53,79 @@ const EFFECT_MODES = [
   { wave: 0.3, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.3, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.8, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // analog RGB drift
   { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // MPEG block corrupt
   { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.1, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // bit-crush + hue
-  // --- 3d movement 4 (16 total = 256 beats = exactly 2 loops) ---
+  // --- 3D movement 4 (16 total = 256 beats = exactly 2 loops) ---
   { wave: 0.1, chroma: 0.2,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.5, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // luma parallax
   { wave: 0.2, chroma: 0.0,  vortex: 0.3, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.7, depthChroma: 0.0, zoomBlur: 0.0 }, // perspective tilt
   { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.2, perspTilt: 0.0, depthChroma: 0.5, zoomBlur: 0.0 }, // depth chroma + parallax
   { wave: 0.0, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.9 }, // zoom blur / rush
 ];
 
+// Colours used for beat-burst particles
+const PARTICLE_COLORS = [0x00ffff, 0xff00ff, 0xffcc00, 0xffffff, 0x00ff88];
 
-// ── preload ──────────────────────────────────
 
+// ══════════════════════════════════════════════
+// DOM REFERENCES
+// ══════════════════════════════════════════════
+
+const loadingScreen = document.getElementById('loading-screen');
+const startScreen   = document.getElementById('start-screen');
+const playBtn       = document.getElementById('play-btn');
+const hbdText       = document.getElementById('hbd-text');
+const lyricText     = document.getElementById('lyric-text');
+
+
+// ══════════════════════════════════════════════
+// APPLICATION STATE
+// ══════════════════════════════════════════════
+
+// State machine: LOADING → READY → INTRO_PLAYING → LOOP_PLAYING
+let state = 'LOADING';
+
+// Audio nodes
+let audioCtx           = null;
+let introBuffer        = null;
+let loopBuffer         = null;
+let introSource        = null;
+let loopSource         = null;
+let introStartTime     = 0;   // audioCtx.currentTime at play click
+let loopStartAudioTime = 0;   // when the loop is scheduled to begin
+
+// Playback flags
+let loopStarted  = false;
+let dropHandled  = false;
+
+// Lyric tracking
+let currentLyricIdx       = -1;
+let lyricFadeOutScheduled = false;
+
+// Visual state
+let pixiApp           = null;
+let backgroundSprite       = null;
+let particleContainer = null;
+let particles         = [];
+let currentMode       = 0;
+let lastBeat          = -1;
+let lastTimeSec       = 0;
+
+// Image carousel
+let imageElements     = [];   // preloaded HTMLImageElements
+let imageTextures     = [];   // PIXI textures, built in setupPixi
+let currentImageIndex = 0;
+let touchStartX       = 0;
+
+
+// ══════════════════════════════════════════════
+// PRELOAD
+// ══════════════════════════════════════════════
+
+/**
+ * Fetches and decodes all assets (audio + images) before the start screen
+ * is shown. A temporary AudioContext is used just for decoding — the real
+ * one is created later inside a user gesture (browser autoplay policy).
+ */
 async function preload() {
-  // load image manifest, fall back to original asset if missing
+  // Load image manifest; fall back to the original single asset if missing
   let imageNames = [];
   try {
     imageNames = await fetch('images/manifest.json').then(r => r.json());
@@ -99,7 +144,7 @@ async function preload() {
         img.src = 'assets/image.jpg';
       })];
 
-  // fetch audio + all images in parallel
+  // Fetch audio and all images in parallel
   const [introAB, loopAB, ...imgs] = await Promise.all([
     fetch('assets/intro.mp3').then(r => r.arrayBuffer()),
     fetch('assets/loop.mp3').then(r => r.arrayBuffer()),
@@ -108,12 +153,11 @@ async function preload() {
 
   imageElements = imgs.filter(Boolean);
   if (!imageElements.length) {
-    // absolute fallback — create a blank 1×1 so the app doesn't break
-    const fb = new Image(1, 1);
-    imageElements = [fb];
+    // Absolute fallback — blank 1×1 so the app doesn't break
+    imageElements = [new Image(1, 1)];
   }
 
-  // temp AudioContext to decode audiofiles, real one created later inside a user gesture
+  // Decode audio buffers with a temporary context
   const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
   [introBuffer, loopBuffer] = await Promise.all([
     tmpCtx.decodeAudioData(introAB),
@@ -127,55 +171,15 @@ async function preload() {
 }
 
 
-// ── pixi setup ───────────────────────────────
+// ══════════════════════════════════════════════
+// PIXI SETUP
+// ══════════════════════════════════════════════
 
-function setupPixi() {
-  pixiApp = new PIXI.Application({
-    resizeTo: window,
-    backgroundColor: 0x000000,
-    antialias: false,
-    autoDensity: true,
-    resolution: window.devicePixelRatio || 1,
-  });
-
-  document.getElementById('canvas-container').appendChild(pixiApp.view);
-
-  imageTextures = imageElements.map(img => PIXI.Texture.from(img));
-  const tex = imageTextures[currentImageIndex] || PIXI.Texture.from('assets/image.jpg');
-  markoSprite = new PIXI.Sprite(tex);
-  markoSprite.alpha = 0;
-  coverSprite(markoSprite);
-  pixiApp.stage.addChild(markoSprite);
-
-  particleContainer = new PIXI.Container();
-  pixiApp.stage.addChild(particleContainer);
-
-  const wave        = createWaveFilter();
-  const chroma      = createChromaFilter();
-  const vortex      = createVortexFilter();
-  const barrel      = createBarrelFilter();
-  const scanline    = createScanlineFilter();
-  const horizChroma = createHorizChromaFilter();
-  const swirl       = createSwirlFilter();
-  const sliceJitter  = createSliceJitterFilter();
-  const rgbDrift     = createRGBDriftFilter();
-  const blockCorrupt = createBlockCorruptFilter();
-  const posterize    = createPosterizeFilter();
-  const lumaParallax = createLumaParallaxFilter();
-  const perspTilt    = createPerspTiltFilter();
-  const depthChroma  = createDepthChromaFilter();
-  const zoomBlur     = createZoomBlurFilter();
-
-  markoSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur];
-
-  // stash on window so mainTick can grab without a closure
-  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur };
-
-  pixiApp.renderer.on('resize', () => coverSprite(markoSprite));
-  pixiApp.ticker.add(mainTick);
-}
-
-// scale + center the sprite so it covers the viewport (like CSS background-size: cover)
+/**
+ * Scales and centers a sprite to fill the viewport (CSS background-size: cover).
+ * Defers via a texture 'update' event if the texture isn't loaded yet.
+ * @param {PIXI.Sprite} sprite
+ */
 function coverSprite(sprite) {
   if (!sprite.texture.valid) {
     sprite.texture.on('update', () => coverSprite(sprite));
@@ -191,12 +195,67 @@ function coverSprite(sprite) {
   sprite.y = (sh - th * scale) / 2;
 }
 
+/**
+ * Creates the PixiJS application, builds all GLSL filter instances, and
+ * attaches the main render loop. Called once inside the play-button handler
+ * so the GPU context is created in response to a user gesture.
+ */
+function setupPixi() {
+  pixiApp = new PIXI.Application({
+    resizeTo: window,
+    backgroundColor: 0x000000,
+    antialias: false,
+    autoDensity: true,
+    resolution: window.devicePixelRatio || 1,
+  });
 
-// ── glsl filters ─────────────────────────────
+  document.getElementById('canvas-container').appendChild(pixiApp.view);
+
+  // Build textures from preloaded images
+  imageTextures = imageElements.map(img => PIXI.Texture.from(img));
+  const tex = imageTextures[currentImageIndex] || PIXI.Texture.from('assets/image.jpg');
+  backgroundSprite = new PIXI.Sprite(tex);
+  backgroundSprite.alpha = 0;
+  coverSprite(backgroundSprite);
+  pixiApp.stage.addChild(backgroundSprite);
+
+  particleContainer = new PIXI.Container();
+  pixiApp.stage.addChild(particleContainer);
+
+  // Instantiate all filters and assign them to the sprite
+  const wave         = createWaveFilter();
+  const chroma       = createChromaFilter();
+  const vortex       = createVortexFilter();
+  const barrel       = createBarrelFilter();
+  const scanline     = createScanlineFilter();
+  const horizChroma  = createHorizChromaFilter();
+  const swirl        = createSwirlFilter();
+  const sliceJitter  = createSliceJitterFilter();
+  const rgbDrift     = createRGBDriftFilter();
+  const blockCorrupt = createBlockCorruptFilter();
+  const posterize    = createPosterizeFilter();
+  const lumaParallax = createLumaParallaxFilter();
+  const perspTilt    = createPerspTiltFilter();
+  const depthChroma  = createDepthChromaFilter();
+  const zoomBlur     = createZoomBlurFilter();
+
+  backgroundSprite.filters = [wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur];
+
+  // Stash on window so mainTick can access without a closure
+  window._filters = { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur };
+
+  pixiApp.renderer.on('resize', () => coverSprite(backgroundSprite));
+  pixiApp.ticker.add(mainTick);
+}
+
+
+// ══════════════════════════════════════════════
+// GLSL FILTERS
+// ══════════════════════════════════════════════
 
 // PIXI's built-in vertex shader has no precision declaration, so vTextureCoord
-// ends up as implicitly highp. our fragment shaders use mediump, Firefox's
-// GLSL linker rejects that mismatch. using our own vertex shader with explicit
+// ends up as implicitly highp. Our fragment shaders use mediump, and Firefox's
+// GLSL linker rejects that mismatch. Using our own vertex shader with explicit
 // mediump keeps both sides consistent.
 const VERT_SRC = `
   precision mediump float;
@@ -212,8 +271,10 @@ const VERT_SRC = `
   }
 `;
 
-// sine wave UV displacement, x and y use different frequencies and speeds
-// so it doesn't look like a regular grid ripple
+/**
+ * Sine-wave UV displacement. X and Y use different frequencies and speeds
+ * so it doesn't look like a regular grid ripple.
+ */
 function createWaveFilter() {
   const frag = `
     precision mediump float;
@@ -234,8 +295,10 @@ function createWaveFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// RGB channel split, samples R and B at positions offset radially from center,
-// G stays put. cheap lens fringing / prismatic effect
+/**
+ * Radial RGB channel split. R and B sample at positions offset from centre;
+ * G stays put. Produces cheap lens fringing / prismatic aberration.
+ */
 function createChromaFilter() {
   const frag = `
     precision mediump float;
@@ -258,10 +321,12 @@ function createChromaFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// hue rotation using Rodrigues' axis-angle formula on RGB.
-// rotating around the (1,1,1) axis shifts hue while preserving luminance relationships.
-// uIntensity drives the rotation angle, so hue pops on each beat and decays back.
-// no spatial distortion — purely color-based, so it's trippy without being dizzying
+/**
+ * Hue rotation using Rodrigues' axis-angle formula on RGB.
+ * Rotating around the (1,1,1) axis shifts hue while preserving luminance.
+ * uIntensity drives the rotation angle — pops on each beat then decays.
+ * No spatial distortion; purely colour-based.
+ */
 function createVortexFilter() {
   const frag = `
     precision mediump float;
@@ -279,7 +344,7 @@ function createVortexFilter() {
 
     void main(void) {
       vec4 color = texture2D(uSampler, vTextureCoord);
-      // 1.8 rad (~103deg) at full intensity — enough for a strong shift without flipping to complementary
+      // 1.8 rad (~103°) at full intensity — strong shift without flipping to complementary
       float angle = uIntensity * 1.8;
       color.rgb = hueShift(color.rgb, angle);
       gl_FragColor = color;
@@ -288,7 +353,10 @@ function createVortexFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// barrel / fisheye distortion, pushes UV outward based on squared distance from center
+/**
+ * Barrel / fisheye distortion. Pushes UV outward based on squared distance
+ * from centre; out-of-bounds pixels are filled black.
+ */
 function createBarrelFilter() {
   const frag = `
     precision mediump float;
@@ -313,8 +381,10 @@ function createBarrelFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// CRT scanlines + glitch slices. rand() is a basic float hash.
-// floor(uTime * 8) snaps to a new random slice position 8 times per second
+/**
+ * CRT scanlines combined with glitch slices. rand() is a basic float hash.
+ * floor(uTime * 8) snaps to a new random slice position 8 times per second.
+ */
 function createScanlineFilter() {
   const frag = `
     precision mediump float;
@@ -351,10 +421,11 @@ function createScanlineFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uTime: 0.0, uIntensity: 0.0 });
 }
 
-// pure horizontal RGB split — R shifts left, B shifts right, G stays.
-// uTime drives a sine oscillation so the split actively sweeps rather than
-// sitting at a fixed offset. uIntensity (beat-driven) scales the amplitude,
-// making the sweep largest on each beat and fading between them.
+/**
+ * Pure horizontal RGB split — R shifts left, B shifts right, G stays.
+ * uTime drives a sine oscillation so the split actively sweeps rather than
+ * sitting at a fixed offset. uIntensity (beat-driven) scales the amplitude.
+ */
 function createHorizChromaFilter() {
   const frag = `
     precision mediump float;
@@ -377,8 +448,10 @@ function createHorizChromaFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// mild swirl/twist — rotates UV around center, strongest at center and
-// fading to zero at edges. kept low intensity to avoid disorientation.
+/**
+ * Mild swirl/twist. Rotates UV around centre, strongest at the centre and
+ * fading to zero at edges. Kept low intensity to avoid disorientation.
+ */
 function createSwirlFilter() {
   const frag = `
     precision mediump float;
@@ -398,9 +471,11 @@ function createSwirlFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
 }
 
-// many independent horizontal slices randomly displaced — classic VHS / data-mosh
-// shutter: each slice independently decides whether to fire on this frame,
-// threshold controlled by uIntensity so more slices tear at higher intensities
+/**
+ * Many independent horizontal slices randomly displaced — classic VHS/datamosh.
+ * Each slice independently decides whether to fire on this frame; the threshold
+ * is controlled by uIntensity so more slices tear at higher intensities.
+ */
 function createSliceJitterFilter() {
   const frag = `
     precision mediump float;
@@ -427,8 +502,10 @@ function createSliceJitterFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// each RGB channel drifts on its own sinusoidal path — like an aging CRT
-// where the three guns are slightly mis-registered and wobble independently
+/**
+ * Each RGB channel drifts on its own sinusoidal path — like an ageing CRT
+ * where the three guns are slightly mis-registered and wobble independently.
+ */
 function createRGBDriftFilter() {
   const frag = `
     precision mediump float;
@@ -453,8 +530,10 @@ function createRGBDriftFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// MPEG-style block corruption — image divided into blocks, random blocks
-// displaced horizontally (and a touch vertically), like a lossy codec choking
+/**
+ * MPEG-style block corruption. The image is divided into blocks; random blocks
+ * are displaced horizontally (and slightly vertically), like a lossy codec choking.
+ */
 function createBlockCorruptFilter() {
   const frag = `
     precision mediump float;
@@ -483,9 +562,11 @@ function createBlockCorruptFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// bit-crush / posterize — quantises colour to N levels. at rest ~8 levels
-// (visible but not harsh); on a beat pulse it slams down to 2–3 levels
-// for a hard digital-corruption flash before resolving back
+/**
+ * Bit-crush / posterize. Quantises colour to N levels. At rest (~8 levels)
+ * it's visible but not harsh; on a beat pulse it slams down to 2–3 levels
+ * for a hard digital-corruption flash, then resolves back.
+ */
 function createPosterizeFilter() {
   const frag = `
     precision mediump float;
@@ -505,9 +586,11 @@ function createPosterizeFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0 });
 }
 
-// treats image luminance as a depth map — bright pixels are "closer",
-// dark pixels are "further". a slowly-rotating viewpoint offset displaces
-// each pixel proportional to its depth, creating real parallax movement.
+/**
+ * Treats image luminance as a depth map — bright pixels are "closer", dark
+ * pixels are "further". A slowly-rotating viewpoint offset displaces each
+ * pixel proportional to its depth, creating real parallax movement.
+ */
 function createLumaParallaxFilter() {
   const frag = `
     precision mediump float;
@@ -528,9 +611,11 @@ function createLumaParallaxFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// non-linear perspective warp — X scale depends on Y position and vice versa,
-// simulating a surface rocking on two 3D axes simultaneously. the oscillation
-// frequencies are irrational so it never settles into a visible loop.
+/**
+ * Non-linear perspective warp. X scale depends on Y position and vice versa,
+ * simulating a surface rocking on two 3D axes simultaneously. Oscillation
+ * frequencies are irrational so it never settles into a visible loop.
+ */
 function createPerspTiltFilter() {
   const frag = `
     precision mediump float;
@@ -552,9 +637,11 @@ function createPerspTiltFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// luminance-driven chromatic separation — bright areas get strong R/B fringing
-// (they're "closer" to the viewer) while dark areas stay clean. the separation
-// direction rotates with time, making the colour split shimmer and spin.
+/**
+ * Luminance-driven chromatic separation. Bright areas get strong R/B fringing
+ * (they're "closer" to the viewer) while dark areas stay clean. The separation
+ * direction rotates with time, making the colour split shimmer and spin.
+ */
 function createDepthChromaFilter() {
   const frag = `
     precision mediump float;
@@ -577,9 +664,11 @@ function createDepthChromaFilter() {
   return new PIXI.Filter(VERT_SRC, frag, { uIntensity: 0.0, uTime: 0.0 });
 }
 
-// radial zoom blur — averages 6 samples along the zoom axis toward the centre,
-// simulating the image rushing at the viewer. beat pulse spikes the blur amount
-// so each downbeat feels like a push through 3D space.
+/**
+ * Radial zoom blur. Averages 6 samples along the zoom axis toward the centre,
+ * simulating the image rushing at the viewer. Beat pulse spikes the blur amount
+ * so each downbeat feels like a push through 3D space.
+ */
 function createZoomBlurFilter() {
   const frag = `
     precision mediump float;
@@ -602,10 +691,17 @@ function createZoomBlurFilter() {
 }
 
 
-// ── audio playback ───────────────────────────
+// ══════════════════════════════════════════════
+// AUDIO PLAYBACK
+// ══════════════════════════════════════════════
 
+/**
+ * Creates the AudioContext (must run inside a user gesture) and schedules
+ * the intro immediately, with the loop buffered to start exactly when the
+ * intro ends — no gap, no click. LOOP_START_TRIM skips dead silence at the
+ * head of loop.mp3.
+ */
 function startPlayback() {
-  // AudioContext must be created inside a user gesture (browser autoplay policy)
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   introStartTime     = audioCtx.currentTime;
   loopStartAudioTime = audioCtx.currentTime + INTRO_DURATION;
@@ -615,8 +711,6 @@ function startPlayback() {
   introSource.connect(audioCtx.destination);
   introSource.start(introStartTime);
 
-  // schedule the loop to start exactly when the intro ends, no gap, no click.
-  // start() with an offset skips the dead silence at the head of the file
   loopSource = audioCtx.createBufferSource();
   loopSource.buffer    = loopBuffer;
   loopSource.loop      = true;
@@ -627,10 +721,15 @@ function startPlayback() {
 }
 
 
-// ── beat sync ────────────────────────────────
+// ══════════════════════════════════════════════
+// BEAT SYNC
+// ══════════════════════════════════════════════
 
-// returns how many beats have elapsed since the loop started, and the
-// fractional position within the current beat (0 = downbeat, 1 = next beat)
+/**
+ * Returns the current beat index and fractional beat phase.
+ * phase 0 = downbeat, phase 1 = next beat.
+ * @returns {{ beat: number, phase: number }}
+ */
 function getBeatInfo() {
   if (!loopStarted) return { beat: 0, phase: 0 };
   const elapsed   = audioCtx.currentTime - loopStartAudioTime;
@@ -639,10 +738,14 @@ function getBeatInfo() {
 }
 
 
-// ── particles ────────────────────────────────
+// ══════════════════════════════════════════════
+// PARTICLES
+// ══════════════════════════════════════════════
 
-const PARTICLE_COLORS = [0x00ffff, 0xff00ff, 0xffcc00, 0xffffff, 0x00ff88];
-
+/**
+ * Spawns 80 particles from the screen centre in a full 360° spread.
+ * Each particle is a random shape (dot, triangle, or diamond) in a neon colour.
+ */
 function spawnParticles() {
   const cx = pixiApp.screen.width / 2;
   const cy = pixiApp.screen.height / 2;
@@ -663,7 +766,7 @@ function spawnParticles() {
     }
     g.endFill();
 
-    // evenly spread around 360° with a bit of jitter so it doesn't look like a clock
+    // Evenly spread around 360° with a bit of jitter so it doesn't look like a clock
     const angle = (i / 80) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
     const speed = 3 + Math.random() * 9;
 
@@ -679,7 +782,10 @@ function spawnParticles() {
   }
 }
 
-// iterate backwards so splicing doesn't mess up the index
+/**
+ * Advances all live particles by one frame — applies gravity, drag, and alpha
+ * decay. Iterates backwards so splicing doesn't corrupt the index.
+ */
 function updateParticles() {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
@@ -699,8 +805,15 @@ function updateParticles() {
 }
 
 
-// ── drop handler ─────────────────────────────
+// ══════════════════════════════════════════════
+// DROP HANDLER
+// ══════════════════════════════════════════════
 
+/**
+ * Fires once at the musical "drop" (when the loop begins). Spawns the particle
+ * burst, shows the HBD text, and briefly slams all filter intensities to maximum
+ * before handing control to the mode system.
+ */
 function handleDrop() {
   if (dropHandled) return;
   dropHandled = true;
@@ -709,7 +822,7 @@ function handleDrop() {
   spawnParticles();
   hbdText.classList.add('visible');
 
-  // slam all filters to max for ~2 beats then let the mode system take over
+  // Slam all filters to max for ~2 beats, then let the mode system take over
   Object.values(window._filters).forEach(f => {
     if (f.uniforms.uIntensity !== undefined) f.uniforms.uIntensity = 1.5;
   });
@@ -717,12 +830,18 @@ function handleDrop() {
 }
 
 
-// ── lyrics ───────────────────────────────────
+// ══════════════════════════════════════════════
+// LYRICS
+// ══════════════════════════════════════════════
 
-let lyricFadeOutScheduled = false;
-
+/**
+ * Advances the lyric display to whichever cue is active at `elapsed` seconds.
+ * Handles fade-in (by re-triggering the CSS transition) and schedules a
+ * fade-out 0.4 s before the next cue for a clean gap between lines.
+ * @param {number} elapsed - seconds since playback started
+ */
 function updateLyrics(elapsed) {
-  // find the last cue whose timestamp we've passed
+  // Find the last cue whose timestamp we've passed
   let active = -1;
   for (let i = 0; i < LYRICS.length; i++) {
     if (elapsed >= LYRICS[i].t) active = i;
@@ -730,8 +849,8 @@ function updateLyrics(elapsed) {
   }
 
   if (active === currentLyricIdx) {
-    // same line is still showing, check if it's time to start fading it out.
-    // fade starts 0.4s before the next cue so there's a clean gap between lines
+    // Same line is still showing — check if it's time to start fading out.
+    // Fade starts 0.4 s before the next cue so there's a clean gap between lines.
     if (active >= 0 && !lyricFadeOutScheduled) {
       const nextT  = (active + 1 < LYRICS.length) ? LYRICS[active + 1].t : INTRO_DURATION + 0.4;
       const fadeAt = nextT - 0.4;
@@ -759,10 +878,76 @@ function updateLyrics(elapsed) {
 }
 
 
-// ── main tick ────────────────────────────────
+// ══════════════════════════════════════════════
+// MAIN TICK
+// ══════════════════════════════════════════════
 
-let lastTimeSec = 0;
+/**
+ * Sets all filter intensities for the intro phase. Effects gently ramp up
+ * over the intro duration but stay subtle; post-drop effects (swirl, datamosh,
+ * etc.) are silenced entirely until the loop begins.
+ * @param {number} introRamp - 0→1 value representing progress through the intro
+ */
+function applyIntroFilterIntensities(introRamp) {
+  const f = window._filters;
+  f.wave.uniforms.uIntensity         = introRamp * 0.6;
+  f.chroma.uniforms.uIntensity       = introRamp * 0.3;
+  f.vortex.uniforms.uIntensity       = 0.0;
+  f.barrel.uniforms.uIntensity       = introRamp * 0.15;
+  f.scanline.uniforms.uIntensity     = introRamp * 0.4;
+  // Keep all post-drop effects silent during the intro
+  f.horizChroma.uniforms.uIntensity  = 0.0;
+  f.swirl.uniforms.uIntensity        = 0.0;
+  f.sliceJitter.uniforms.uIntensity  = 0.0;
+  f.rgbDrift.uniforms.uIntensity     = 0.0;
+  f.blockCorrupt.uniforms.uIntensity = 0.0;
+  f.posterize.uniforms.uIntensity    = 0.0;
+  f.lumaParallax.uniforms.uIntensity = 0.0;
+  f.perspTilt.uniforms.uIntensity    = 0.0;
+  f.depthChroma.uniforms.uIntensity  = 0.0;
+  f.zoomBlur.uniforms.uIntensity     = 0.0;
+}
 
+/**
+ * Sets all filter intensities for the loop (post-drop) phase. Base values
+ * come from the current EFFECT_MODE; beat pulse adds on top. Effects whose
+ * mode base value is 0 are kept fully off to avoid unnecessary GPU work.
+ * @param {object} mode       - current entry from EFFECT_MODES
+ * @param {number} pulseValue - beat envelope, 1 on downbeat decaying to 0
+ * @param {number} beat       - current beat index (used for swirl beat modifier)
+ */
+function applyLoopFilterIntensities(mode, pulseValue, beat) {
+  const f = window._filters;
+  const P = 0.8; // pulse strength — scales the beat-envelope contribution
+
+  f.wave.uniforms.uIntensity        = mode.wave        + pulseValue * P;
+  f.chroma.uniforms.uIntensity      = mode.chroma      + pulseValue * P * 0.6;
+  f.vortex.uniforms.uIntensity      = mode.vortex      + pulseValue * P * 0.4;
+  f.barrel.uniforms.uIntensity      = mode.barrel      + pulseValue * P * 0.5;
+  f.scanline.uniforms.uIntensity    = mode.scanline    + pulseValue * P * 0.7;
+  f.horizChroma.uniforms.uIntensity = mode.horizChroma + pulseValue * P * 0.7;
+
+  // Irrational beat step → signed per-beat modifier so the swirl kick varies:
+  // some beats push further CCW, some barely nudge, some pull slightly CW
+  const swirlBeatMod = Math.sin(beat * 1.8475);
+  f.swirl.uniforms.uIntensity = mode.swirl > 0
+    ? mode.swirl + swirlBeatMod * pulseValue * P * 0.7 : 0.0;
+
+  f.sliceJitter.uniforms.uIntensity  = mode.sliceJitter  > 0 ? mode.sliceJitter  + pulseValue * P * 0.6  : 0.0;
+  f.rgbDrift.uniforms.uIntensity     = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * P * 0.5  : 0.0;
+  f.blockCorrupt.uniforms.uIntensity = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * P * 0.5  : 0.0;
+  f.posterize.uniforms.uIntensity    = mode.posterize    > 0 ? mode.posterize    + pulseValue * P * 0.25 : 0.0;
+  f.lumaParallax.uniforms.uIntensity = mode.lumaParallax > 0 ? mode.lumaParallax + pulseValue * P * 0.5  : 0.0;
+  f.perspTilt.uniforms.uIntensity    = mode.perspTilt    > 0 ? mode.perspTilt    + pulseValue * P * 0.6  : 0.0;
+  f.depthChroma.uniforms.uIntensity  = mode.depthChroma  > 0 ? mode.depthChroma  + pulseValue * P * 0.6  : 0.0;
+  f.zoomBlur.uniforms.uIntensity     = mode.zoomBlur     > 0 ? mode.zoomBlur     + pulseValue * P * 0.7  : 0.0;
+}
+
+/**
+ * Per-frame update driven by the PixiJS ticker. Advances uTime on all filters,
+ * drives state-specific visuals (intro fade-in / lyrics vs. loop beat-sync /
+ * mode cycling), triggers the drop, and updates particles.
+ */
 function mainTick() {
   if (!audioCtx) return;
 
@@ -770,50 +955,35 @@ function mainTick() {
   const elapsed = now - introStartTime;
   lastTimeSec   = now;
 
-  const { wave, chroma, vortex, barrel, scanline, horizChroma, swirl, sliceJitter, rgbDrift, blockCorrupt, posterize, lumaParallax, perspTilt, depthChroma, zoomBlur } = window._filters;
+  const f = window._filters;
 
-  // uTime is absolute audioCtx time, it never resets, so the shader
-  // internal state (wave phase, swirl rotation, glitch positions) is
-  // always different even when the song loops
-  wave.uniforms.uTime         = now;
-  chroma.uniforms.uTime       = now;
-  vortex.uniforms.uTime       = now;
-  barrel.uniforms.uTime       = now;
-  scanline.uniforms.uTime     = now;
-  horizChroma.uniforms.uTime  = now;
-  sliceJitter.uniforms.uTime   = now;
-  rgbDrift.uniforms.uTime      = now;
-  blockCorrupt.uniforms.uTime  = now;
-  lumaParallax.uniforms.uTime  = now;
-  perspTilt.uniforms.uTime     = now;
-  depthChroma.uniforms.uTime   = now;
+  // uTime is absolute audioCtx time and never resets, so shader-internal state
+  // (wave phase, swirl rotation, glitch positions) is always different even when
+  // the song loops.
+  f.wave.uniforms.uTime        = now;
+  f.chroma.uniforms.uTime      = now;
+  f.vortex.uniforms.uTime      = now;
+  f.barrel.uniforms.uTime      = now;
+  f.scanline.uniforms.uTime    = now;
+  f.horizChroma.uniforms.uTime = now;
+  f.sliceJitter.uniforms.uTime  = now;
+  f.rgbDrift.uniforms.uTime     = now;
+  f.blockCorrupt.uniforms.uTime = now;
+  f.lumaParallax.uniforms.uTime = now;
+  f.perspTilt.uniforms.uTime    = now;
+  f.depthChroma.uniforms.uTime  = now;
 
   if (now >= loopStartAudioTime && !dropHandled) handleDrop();
 
   if (state === 'INTRO_PLAYING') {
 
-    // photo fades in over the first 20s
-    markoSprite.alpha = Math.min(1, elapsed / 20);
+    // Photo fades in over the first 20 s
+    backgroundSprite.alpha = Math.min(1, elapsed / 20);
 
-    // effects gently ramp up during the intro so it's not completely static,
-    // but stays subtle, vortex stays off until the drop
+    // Effects gently ramp up during the intro so it's not completely static,
+    // but stays subtle — vortex stays off until the drop
     const introRamp = Math.min(1, elapsed / INTRO_DURATION) * 0.3;
-    wave.uniforms.uIntensity         = introRamp * 0.6;
-    chroma.uniforms.uIntensity       = introRamp * 0.3;
-    vortex.uniforms.uIntensity       = 0.0;
-    barrel.uniforms.uIntensity       = introRamp * 0.15;
-    scanline.uniforms.uIntensity     = introRamp * 0.4;
-    // keep all post-drop effects silent during the intro
-    horizChroma.uniforms.uIntensity  = 0.0;
-    swirl.uniforms.uIntensity        = 0.0;
-    sliceJitter.uniforms.uIntensity  = 0.0;
-    rgbDrift.uniforms.uIntensity     = 0.0;
-    blockCorrupt.uniforms.uIntensity = 0.0;
-    posterize.uniforms.uIntensity    = 0.0;
-    lumaParallax.uniforms.uIntensity = 0.0;
-    perspTilt.uniforms.uIntensity    = 0.0;
-    depthChroma.uniforms.uIntensity  = 0.0;
-    zoomBlur.uniforms.uIntensity     = 0.0;
+    applyIntroFilterIntensities(introRamp);
 
     updateLyrics(elapsed);
 
@@ -821,7 +991,7 @@ function mainTick() {
 
   } else if (state === 'LOOP_PLAYING') {
 
-    markoSprite.alpha = 1;
+    backgroundSprite.alpha = 1;
     lyricText.classList.remove('visible');
 
     const { beat, phase } = getBeatInfo();
@@ -829,7 +999,7 @@ function mainTick() {
     if (beat !== lastBeat) {
       lastBeat = beat;
 
-      // re-trigger the CSS pulse animation on each beat by removing the class,
+      // Re-trigger the CSS pulse animation on each beat by removing the class,
       // forcing a reflow, then adding it back
       hbdText.classList.remove('pulse');
       void hbdText.offsetWidth;
@@ -844,37 +1014,32 @@ function mainTick() {
     }
 
     // pulse envelope: (1-phase)^2.5 gives a sharp hit on the downbeat that
-    // decays quickly, adds on top of the mode's base intensity
-    const pulseValue    = Math.pow(1 - phase, 2.5);
-    const mode          = EFFECT_MODES[currentMode];
-    const PULSE_STRENGTH = 0.8;
-
-    wave.uniforms.uIntensity            = mode.wave        + pulseValue * PULSE_STRENGTH;
-    chroma.uniforms.uIntensity          = mode.chroma      + pulseValue * PULSE_STRENGTH * 0.6;
-    vortex.uniforms.uIntensity          = mode.vortex      + pulseValue * PULSE_STRENGTH * 0.4;
-    barrel.uniforms.uIntensity          = mode.barrel      + pulseValue * PULSE_STRENGTH * 0.5;
-    scanline.uniforms.uIntensity        = mode.scanline    + pulseValue * PULSE_STRENGTH * 0.7;
-    horizChroma.uniforms.uIntensity     = mode.horizChroma + pulseValue * PULSE_STRENGTH * 0.7;
-    // irrational beat step → signed per-beat modifier so the beat kick varies:
-    // some beats push further CCW, some barely nudge, some pull slightly CW
-    const swirlBeatMod = Math.sin(beat * 1.8475);
-    swirl.uniforms.uIntensity            = mode.swirl        > 0 ? mode.swirl        + swirlBeatMod * pulseValue * PULSE_STRENGTH * 0.7 : 0.0;
-    sliceJitter.uniforms.uIntensity      = mode.sliceJitter  > 0 ? mode.sliceJitter  + pulseValue * PULSE_STRENGTH * 0.6 : 0.0;
-    rgbDrift.uniforms.uIntensity         = mode.rgbDrift     > 0 ? mode.rgbDrift     + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
-    blockCorrupt.uniforms.uIntensity     = mode.blockCorrupt > 0 ? mode.blockCorrupt + pulseValue * PULSE_STRENGTH * 0.5 : 0.0;
-    posterize.uniforms.uIntensity        = mode.posterize    > 0 ? mode.posterize    + pulseValue * PULSE_STRENGTH * 0.25 : 0.0;
-    lumaParallax.uniforms.uIntensity     = mode.lumaParallax > 0 ? mode.lumaParallax + pulseValue * PULSE_STRENGTH * 0.5  : 0.0;
-    perspTilt.uniforms.uIntensity        = mode.perspTilt    > 0 ? mode.perspTilt    + pulseValue * PULSE_STRENGTH * 0.6  : 0.0;
-    depthChroma.uniforms.uIntensity      = mode.depthChroma  > 0 ? mode.depthChroma  + pulseValue * PULSE_STRENGTH * 0.6  : 0.0;
-    zoomBlur.uniforms.uIntensity         = mode.zoomBlur     > 0 ? mode.zoomBlur     + pulseValue * PULSE_STRENGTH * 0.7  : 0.0;
+    // decays quickly, adding on top of the mode's base intensity
+    const pulseValue = Math.pow(1 - phase, 2.5);
+    applyLoopFilterIntensities(EFFECT_MODES[currentMode], pulseValue, beat);
   }
 
   updateParticles();
 }
 
 
-// ── init ─────────────────────────────────────
+// ══════════════════════════════════════════════
+// INPUT & EVENT HANDLERS
+// ══════════════════════════════════════════════
 
+/**
+ * Cycles to the next (+1) or previous (-1) image in the carousel.
+ * @param {number} delta - +1 for next, -1 for previous
+ */
+function switchImage(delta) {
+  if (!backgroundSprite || imageTextures.length <= 1) return;
+  currentImageIndex = (currentImageIndex + delta + imageTextures.length) % imageTextures.length;
+  backgroundSprite.texture = imageTextures[currentImageIndex];
+  coverSprite(backgroundSprite);
+  console.log(`[image] ${currentImageIndex + 1} / ${imageTextures.length}`);
+}
+
+// Play button — must be a direct user gesture to satisfy the AudioContext policy
 playBtn.addEventListener('click', () => {
   startScreen.style.display = 'none';
   setupPixi();
@@ -883,29 +1048,19 @@ playBtn.addEventListener('click', () => {
   lastTimeSec = audioCtx.currentTime;
 });
 
-// ── image switching ───────────────────────────
-
-function switchImage(delta) {
-  if (!markoSprite || imageTextures.length <= 1) return;
-  currentImageIndex = (currentImageIndex + delta + imageTextures.length) % imageTextures.length;
-  markoSprite.texture = imageTextures[currentImageIndex];
-  coverSprite(markoSprite);
-  console.log(`[image] ${currentImageIndex + 1} / ${imageTextures.length}`);
-}
-
-// desktop: arrow keys
+// Desktop: arrow keys cycle images
 document.addEventListener('keydown', e => {
   if (state !== 'INTRO_PLAYING' && state !== 'LOOP_PLAYING') return;
   if (e.key === 'ArrowRight') switchImage(1);
   if (e.key === 'ArrowLeft')  switchImage(-1);
 });
 
-// desktop: double-click canvas  /  mobile: double-tap
+// Desktop double-click / mobile double-tap — advance to next image
 document.getElementById('canvas-container').addEventListener('dblclick', () => {
   if (state === 'INTRO_PLAYING' || state === 'LOOP_PLAYING') switchImage(1);
 });
 
-// mobile: swipe left/right on canvas
+// Mobile: swipe left/right on canvas to cycle images
 const _cvs = document.getElementById('canvas-container');
 _cvs.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
 _cvs.addEventListener('touchend',   e => {
@@ -915,6 +1070,10 @@ _cvs.addEventListener('touchend',   e => {
   }
 }, { passive: true });
 
+
+// ══════════════════════════════════════════════
+// BOOTSTRAP
+// ══════════════════════════════════════════════
 
 preload().catch(err => {
   console.error('Preload failed:', err);
