@@ -161,7 +161,7 @@ html, body {
   width: 100%;
   text-align: center;
   z-index: 10;
-  font-size: clamp(1.4rem, 5vw, 3.4rem);
+  font-size: clamp(1.4rem, 5vw, 3.2rem);
   font-weight: 900;
   letter-spacing: clamp(4px, 1.5vw, 14px);
   color: #fff;
@@ -195,9 +195,9 @@ html, body {
   bottom: 12%;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 84vw;
+  max-width: 95vw;
   z-index: 10;
-  font-size: clamp(3rem, 4rem, 5rem);
+  font-size: clamp(1.4rem, 5vw, 3.2rem);
   font-style: italic;
   letter-spacing: 1px;
   color: #fff;

@@ -46,6 +46,10 @@ let particles          = [];
 let currentMode        = 0;
 let lastBeat           = -1;
 let dropHandled        = false;
+let imageElements      = [];   // preloaded HTMLImageElements
+let imageTextures      = [];   // PIXI textures, built in setupPixi
+let currentImageIndex  = 0;
+let touchStartX        = 0;
 
 // base intensities per effect mode, beat pulse adds on top of these.
 // modes cycle every 16 beats (4 bars), giving each one about 6.5 seconds.
@@ -66,9 +70,9 @@ const EFFECT_MODES = [
   { wave: 0.1, chroma: 0.0,  vortex: 0.0, barrel: 0.2, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.3, rgbDrift: 0.0, blockCorrupt: 0.8, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // MPEG block corrupt
   { wave: 0.2, chroma: 0.2,  vortex: 0.5, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.3, blockCorrupt: 0.0, posterize: 0.1, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // bit-crush + hue
   // --- 3d movement 4 (16 total = 256 beats = exactly 2 loops) ---
-  { wave: 0.1, chroma: 0.2,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.8, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // luma parallax
+  { wave: 0.1, chroma: 0.2,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.5, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.0 }, // luma parallax
   { wave: 0.2, chroma: 0.0,  vortex: 0.3, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.7, depthChroma: 0.0, zoomBlur: 0.0 }, // perspective tilt
-  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.3, perspTilt: 0.0, depthChroma: 0.8, zoomBlur: 0.0 }, // depth chroma + parallax
+  { wave: 0.2, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.2, perspTilt: 0.0, depthChroma: 0.5, zoomBlur: 0.0 }, // depth chroma + parallax
   { wave: 0.0, chroma: 0.0,  vortex: 0.0, barrel: 0.0, scanline: 0.0, horizChroma: 0.0, swirl: 0.0,  sliceJitter: 0.0, rgbDrift: 0.0, blockCorrupt: 0.0, posterize: 0.0, lumaParallax: 0.0, perspTilt: 0.0, depthChroma: 0.0, zoomBlur: 0.9 }, // zoom blur / rush
 ];
 
@@ -76,18 +80,38 @@ const EFFECT_MODES = [
 // ── preload ──────────────────────────────────
 
 async function preload() {
-  const imgEl = new Image();
+  // load image manifest, fall back to original asset if missing
+  let imageNames = [];
+  try {
+    imageNames = await fetch('images/manifest.json').then(r => r.json());
+  } catch (_) {}
 
-  // fetch all three assets in parallel; image decode is fire-and-forget
-  const [introAB, loopAB] = await Promise.all([
+  const imageLoaders = imageNames.length
+    ? imageNames.map(name => new Promise(resolve => {
+        const img = new Image();
+        img.onload  = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = `images/${name}`;
+      }))
+    : [new Promise(resolve => {
+        const img = new Image();
+        img.onload = img.onerror = () => resolve(img.complete ? img : null);
+        img.src = 'assets/image.jpg';
+      })];
+
+  // fetch audio + all images in parallel
+  const [introAB, loopAB, ...imgs] = await Promise.all([
     fetch('assets/intro.mp3').then(r => r.arrayBuffer()),
     fetch('assets/loop.mp3').then(r => r.arrayBuffer()),
-    new Promise(resolve => {
-      imgEl.onload = resolve;
-      imgEl.onerror = resolve;
-      imgEl.src = 'assets/image.jpg';
-    }),
+    ...imageLoaders,
   ]);
+
+  imageElements = imgs.filter(Boolean);
+  if (!imageElements.length) {
+    // absolute fallback — create a blank 1×1 so the app doesn't break
+    const fb = new Image(1, 1);
+    imageElements = [fb];
+  }
 
   // temp AudioContext to decode audiofiles, real one created later inside a user gesture
   const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -116,7 +140,8 @@ function setupPixi() {
 
   document.getElementById('canvas-container').appendChild(pixiApp.view);
 
-  const tex = PIXI.Texture.from('assets/image.jpg');
+  imageTextures = imageElements.map(img => PIXI.Texture.from(img));
+  const tex = imageTextures[currentImageIndex] || PIXI.Texture.from('assets/image.jpg');
   markoSprite = new PIXI.Sprite(tex);
   markoSprite.alpha = 0;
   coverSprite(markoSprite);
@@ -495,7 +520,7 @@ function createLumaParallaxFilter() {
       vec2 uv   = vTextureCoord;
       float luma = dot(texture2D(uSampler, uv).rgb, vec3(0.299, 0.587, 0.114));
       // slowly rotating pan direction — different x/y speeds avoid axis-locked drift
-      vec2 pan  = vec2(cos(uTime * 0.35), sin(uTime * 0.27)) * uIntensity * 0.07;
+      vec2 pan  = vec2(cos(uTime * 0.35), sin(uTime * 0.27)) * uIntensity * 0.025;
       // bright pixels shift more than dark ones (parallax)
       gl_FragColor = texture2D(uSampler, clamp(uv + (luma - 0.5) * pan, 0.0, 1.0));
     }
@@ -543,7 +568,7 @@ function createDepthChromaFilter() {
       vec4 base  = texture2D(uSampler, uv);
       float luma = dot(base.rgb, vec3(0.299, 0.587, 0.114));
       // separation magnitude scales with brightness — foreground gets more fringing
-      vec2 sep   = vec2(cos(uTime * 0.52), sin(uTime * 0.41)) * uIntensity * luma * 0.04;
+      vec2 sep   = vec2(cos(uTime * 0.52), sin(uTime * 0.41)) * uIntensity * luma * 0.018;
       float r    = texture2D(uSampler, clamp(uv + sep, 0.0, 1.0)).r;
       float b    = texture2D(uSampler, clamp(uv - sep, 0.0, 1.0)).b;
       gl_FragColor = vec4(r, base.g, b, base.a);
@@ -812,6 +837,9 @@ function mainTick() {
 
       if (beat > 0 && beat % 16 === 0) {
         currentMode = (currentMode + 1) % EFFECT_MODES.length;
+        const m = EFFECT_MODES[currentMode];
+        const active = Object.entries(m).filter(([,v]) => v > 0).map(([k,v]) => `${k}:${v}`).join(' ');
+        console.log(`[mode ${currentMode}] beat ${beat} —`, active || '(all zero)');
       }
     }
 
@@ -854,6 +882,39 @@ playBtn.addEventListener('click', () => {
   state       = 'INTRO_PLAYING';
   lastTimeSec = audioCtx.currentTime;
 });
+
+// ── image switching ───────────────────────────
+
+function switchImage(delta) {
+  if (!markoSprite || imageTextures.length <= 1) return;
+  currentImageIndex = (currentImageIndex + delta + imageTextures.length) % imageTextures.length;
+  markoSprite.texture = imageTextures[currentImageIndex];
+  coverSprite(markoSprite);
+  console.log(`[image] ${currentImageIndex + 1} / ${imageTextures.length}`);
+}
+
+// desktop: arrow keys
+document.addEventListener('keydown', e => {
+  if (state !== 'INTRO_PLAYING' && state !== 'LOOP_PLAYING') return;
+  if (e.key === 'ArrowRight') switchImage(1);
+  if (e.key === 'ArrowLeft')  switchImage(-1);
+});
+
+// desktop: double-click canvas  /  mobile: double-tap
+document.getElementById('canvas-container').addEventListener('dblclick', () => {
+  if (state === 'INTRO_PLAYING' || state === 'LOOP_PLAYING') switchImage(1);
+});
+
+// mobile: swipe left/right on canvas
+const _cvs = document.getElementById('canvas-container');
+_cvs.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+_cvs.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 50 && (state === 'INTRO_PLAYING' || state === 'LOOP_PLAYING')) {
+    switchImage(dx < 0 ? 1 : -1);  // swipe left → next, swipe right → previous
+  }
+}, { passive: true });
+
 
 preload().catch(err => {
   console.error('Preload failed:', err);
